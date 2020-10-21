@@ -18,9 +18,9 @@ N_LAYERS = 3 # Number n of nodes sets (or "layers") of the n-partite graph
 graph = IndividualHerfindahlDiversities.from_folder(
     DATASET_FOLDER,
     N_LAYERS,
-    n_entries=[N_ENTRIES, 0]
+    n_entries=[0, N_ENTRIES],
+    normalize=True
 )
-graph.normalise_all()
 
 n_users = len(graph.ids[0])
 n_songs = len(graph.ids[1])
@@ -75,6 +75,6 @@ listenings_matrix = csr_matrix(
 )
 
 # Optimization recommended by implicit
-os.environ['OPEN_BLAS_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
 model = implicit.als.AlternatingLeastSquares(factors=20)
 model.fit(listenings_matrix)

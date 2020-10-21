@@ -8,6 +8,7 @@ Modified by Augustin Godinot @ 2020
 """
 import csv
 import math
+from time import perf_counter
 from pathlib import Path
 
 import pandas as pd
@@ -18,37 +19,42 @@ from utils import normalise_by
 
 
 class Triversity:
-    def __init__(self, nbpart, name):
+    def __init__(self, nb_sets, folder):
         """ Create an empty n-partite graph
 
-        :param nbpart: The number n of distinct sets (or "layers") in the
+        :param nb_sets: The number n of distinct sets (or "layers") in the
             n-partite graph
 
-        :param name: The name of the graph
+        :param folder: pathlib.Path or str. The folder containing the dataset files and
+        the generated files
         """
 
-        self.name = str(name)
-        self.nbpart = int(nbpart)
-        self.graphs= [[{} for i in range(0,self.nbpart)] for j in range(0,self.nbpart)]
-        self.linkedTrees= [dict() for i in range(0,self.nbpart)]
+        self.folder_path = Path(folder)
+        generated_folder = self.folder_path.joinpath('generated')
+        if not(generated_folder.is_dir()):
+            generated_folder.mkdir()
+
+        self.nb_sets = int(nb_sets)
+        self.graphs= [[{} for i in range(0, self.nb_sets)] for j in range(0, self.nb_sets)]
+        self.linkedTrees= [dict() for i in range(0, self.nb_sets)]
     
-        #care it need 2 s its a list of dictionnary (node,linked tree)
-        #a linked tree is a dictionnary path -> distribution
-        #the path is a tuple
-        #a distribution is a dictionnary node -> weight (probability)
+        # care it need 2 s its a list of dictionnary (node,linked tree)
+        # a linked tree is a dictionnary path -> distribution
+        # the path is a tuple
+        # a distribution is a dictionnary node -> weight (probability)
         self.res = dict()
         self.saved = set()
-        #will save if a result have been spread 
-        #it will be in res if the result have been computed (all means etc)
-        #the save is just for global, not individual
+        # will save if a result have been spread
+        # it will be in res if the result have been computed (all means etc)
+        # the save is just for global, not individual
         
-        # For renaming (transforming the strings hashes of nodes into integers)    
-        self.ids =  [dict() for i in range(self.nbpart)]
-        self.revids = [dict() for i in range(self.nbpart)]
-        self.last_id = [0 for i in range(self.nbpart)]
+        # For renaming (transforming the strings hashes of nodes into integers)
+        self.ids = [dict() for i in range(self.nb_sets)]
+        self.revids = [dict() for i in range(self.nb_sets)]
+        self.last_id = [0 for i in range(self.nb_sets)]
 
     @classmethod
-    def from_folder(cls, folder, n_sets, index_nodes=True, n_entries=None):
+    def from_folder(cls, folder, n_sets, n_entries=None, persist=True, normalize=False):
         """Import a graph from a list of files representing the links
 
         Each line must follow the format : set1_id node1_id set2_id node2_id weight(optional)
@@ -58,63 +64,188 @@ class Triversity:
             files
         :param n_sets: The number n of distinct sets (or "layers") in the
             n-partite graph
-        :param index_nodes: Associate a unique id to each node. Mandatory if
-            nodes are not represented by integers
         :param n_entries: list of line read limits associated to each file. No
-            limit at all if n_entries = None or no limit on file i if 
+            limit at all if n_entries = None or no limit on file i if
             n_entries[i] = 0
+        :param persist: True if you want to save the indexes created for each
+            node and save the links between indexes (not taken into account if
+            these files already exist)
+        :param normalize: If True, normalizes the weights coming out of a node
+            so that their sum is equal to one
 
         :returns: The created Triversity graph
         """
 
-        folder_path = Path(folder)
-        file_names = [str(file) for file in folder_path.iterdir() if file.is_file()]
+        t = perf_counter()
 
-        graph = cls(n_sets, folder_path.name)
-        n_entries = [0]*len(file_names) if n_entries == None else n_entries
+        folder_path = Path(folder)
+        generated_folder = folder_path.joinpath('generated/')
+        indexes = generated_folder.joinpath(Path('nodes_indexes.csv'))
+        indexed_links = generated_folder.joinpath(Path('indexed_links.csv'))
+
+        file_names = [str(file) for file in folder_path.iterdir() if file.is_file()]
+        n_entries = [0] * len(file_names) if n_entries == None else n_entries
 
         if len(n_entries) != len(file_names):
-            raise ValueError('You must provide as much line read limits (n_entries) as file_names')
+            raise ValueError('You must provide as much line read limits (n_entries) as data files in the folder')
 
-        for file_name, n_rows in zip(file_names, n_entries):
-            print(f'Reading file {file_name} ...', end=' ', flush=True)
-            if n_rows != 0:
-                dataset = pd.read_csv(
-                    file_name,
-                    sep=' ',
-                    names=['node1_level', 'node1', 'node2_level', 'node2', 'weight'],
-                    nrows=n_rows
-                )
-            else:
-                dataset = pd.read_csv(
-                    file_name,
-                    sep=' ',
-                    names=['node1_level', 'node1', 'node2_level', 'node2', 'weight']
-                )
-            
+        graph = cls(n_sets, folder)
+
+        if indexes.is_file() and indexed_links.is_file():
+            print(f'Recalling nodes index from {indexes} ...', end=' ', flush=True)
+            graph._recall_node_indexes()
             print('Done')
-            print(f'Importing links from {file_name} ...', end=' ', flush=True)
 
-            for set1_id, node1, set2_id, node2, weight in dataset.itertuples(index=False):
-                graph.add_link(set1_id - 1, node1, set2_id - 1, node2, weight, index_node=index_nodes)
-
+            print(f'Recalling indexed links from {indexed_links} ...', end=' ', flush=True)
+            graph._recall_indexed_links()
             print('Done')
+
+            persist = False
+
+        else:
+            for file_name, n_rows in zip(file_names, n_entries):
+                print(f'Reading {n_rows if n_rows > 0 else "all"} rows from file {file_name} ...', end=' ', flush=True)
+
+                if n_rows != 0:
+                    dataset = pd.read_csv(
+                        file_name,
+                        sep=' ',
+                        names=['node1_level', 'node1', 'node2_level', 'node2', 'weight'],
+                        nrows=n_rows
+                    )
+                else:
+                    dataset = pd.read_csv(
+                        file_name,
+                        sep=' ',
+                        names=['node1_level', 'node1', 'node2_level', 'node2', 'weight']
+                    )
+
+                print('Done')
+                print(f'Importing links from {file_name} ...', end=' ', flush=True)
+
+                for set1_id, node1, set2_id, node2, weight in dataset.itertuples(index=False):
+                    graph.add_link(set1_id - 1, node1, set2_id - 1, node2, weight, index_node=True)
+
+                print('Done')
+
+        print(f'Dastaset import finished in {perf_counter() - t} s')
+
+        if persist:
+            print('Persisting nodes indexes ...', end=' ', flush=True)
+            graph._save_nodes_indexes()
+            print('Done')
+
+            print('Persisting indexed links ...', end=' ', flush=True)
+            graph._save_indexed_links()
+            print('Done')
+
+        if normalize:
+            graph.normalise_all()
 
         return graph
 
-    def save_nodes_indexes(self):
+    def _save_nodes_indexes(self):
         """Save the nodes indexes in a file
 
-        The file is located at the root of the project in a folder named
-        'generated'
+        The file is located in the dataset folder in a folder named 'generated'
+        and is named 'nodes_indexes.csv'
         """
 
-        generated_folder = Path('./generated/')
-        if not(generated_folder.is_dir()):
-            generated_folder.mkdir()
+        generated_folder = self.folder_path.joinpath(Path('./generated/'))
+        indexes_path = generated_folder.joinpath(Path('nodes_indexes.csv'))
 
-        with open(generated_folder.joinpath(Path('nodes_indexes')), 'wb') as csvfile:
-            pass
+        with open(indexes_path, 'w',  newline='') as csvfile:
+            writer = csv.writer(csvfile)
+
+            for set_id, nodes in enumerate(self.ids):
+                for node_hash, node_id in nodes.items():
+                    # to be consistent with dataset files, set ids range from 0
+                    # to n_sets, thus set_id + 1
+                    writer.writerow([set_id + 1, node_hash, node_id])
+
+    def _recall_node_indexes(self):
+        """Recreates the nodes index and inverse index from a previously
+        generated index
+
+        The file must be located in the dataset folder in a folder named
+        'generated' and be named 'nodes_indexes.csv'
+        """
+
+        generated_folder = self.folder_path.joinpath(Path('./generated/'))
+        indexes_path = generated_folder.joinpath(Path('nodes_indexes.csv'))
+
+        with open(indexes_path, 'r') as csvfile:
+            reader = csv.reader(csvfile)
+
+            for set_num, node_hash, node_id in reader:
+                set_id = int(set_num) - 1
+                node_id = int(node_id)
+
+                self.ids[set_id][node_hash] = node_id
+                self.revids[set_id][node_id] = node_hash
+
+                if node_id > self.last_id[set_id]:
+                    self.last_id[set_id] = node_id
+
+            for set_id, _ in enumerate(self.last_id):
+                self.last_id[set_id] += 1
+
+    def _save_indexed_links(self):
+        """Saves the links with the ids of the nodes instead of their hash
+
+        The file is located in the dataset folder in a folder named 'generated'
+        and is named 'indexed_links.csv'
+        """
+
+        generated_folder = self.folder_path.joinpath(Path('./generated/'))
+        indexed_links_path = generated_folder.joinpath(Path('indexed_links.csv'))
+
+        with open(indexed_links_path, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+
+            for origin_set_id in range(self.nb_sets):
+                # Here the assumption is made that the graph is undirected
+                # therefore we save only the upper diagonal of the adjacency matrix
+                for destination_set_id in range(origin_set_id, self.nb_sets):
+                    for origin_node, neighbors in self.graphs[origin_set_id][destination_set_id].items():
+                        for destination_node, weigth in neighbors.items():
+                            # to be consistent with dataset files, set ids
+                            # range from 0 to n_sets, thus set_id + 1
+                            writer.writerow([
+                                origin_set_id + 1,
+                                origin_node,
+                                destination_set_id + 1,
+                                destination_node,
+                                weigth
+                            ])
+
+    def _recall_indexed_links(self):
+        """Recreates the links between ids from a previously generated file
+
+        The file must be located in the dataset folder in a folder named
+        'generated' and be named 'nodes_indexes.csv'
+        """
+
+        generated_folder = self.folder_path.joinpath(Path('./generated/'))
+        indexed_links_path = generated_folder.joinpath(Path('indexed_links.csv'))
+
+        with open(indexed_links_path, 'r') as csvfile:
+            reader = csv.reader(csvfile)
+
+            for origin_set, origin_node, destination_set, destination_node, weight in reader:
+                origin_set = int(origin_set) - 1
+                origin_node = int(origin_node)
+                destination_set = int(destination_set) - 1
+                destination_node = int(destination_node)
+
+                self.add_link(
+                    origin_set,
+                    origin_node,
+                    destination_set,
+                    destination_node,
+                    int(weight),
+                    index_node=False
+                )
 
     def get_default_node(self, set_id, node_hash):
         """Get or create the integer id of a node of the set set_id with node name
@@ -126,7 +257,8 @@ class Triversity:
 
         :returns: The node integer id
         """
-        if node_hash in self.ids[set_id]:
+
+        if node_hash in self.ids[set_id].keys():
             return self.ids[set_id][node_hash]
         else:
             x = self.last_id[set_id]
@@ -169,6 +301,7 @@ class Triversity:
         :param index_node: If True, origin_node and destination_node can be anything that can index a
             dict. If False, origin_node and destination_node must be integers.
         """
+
         if index_node:
             origin_node_id = self.get_default_node(origin_set, origin_node)
             destination_node_id = self.get_default_node(destination_set, destination_node)
@@ -295,11 +428,7 @@ class Triversity:
         :returns: a float representing the computed diversity
         """
 
-        s = 0
-        for x in distribution.values():
-            s+= x * math.log(x,2) if x > 0 else 0
-
-        return -s
+        raise NotImplementedError()
          
     def _div_init(self, n_nodes_origin, n_nodes_destination):
         """Initialises the "memory" (persistante variables) needed to compute the diversity.
@@ -310,7 +439,7 @@ class Triversity:
         :param n_nodes_destination : number of nodes in the last set ("layer") of the path
         """
 
-        self._memory = [0,0,dict()]
+        raise NotImplementedError()
     
     def _div_add(self, node, distribution):
         """Computes the diversity on the given distribution and save it in the given memory.
@@ -337,13 +466,7 @@ class Triversity:
         :returns: the final diversity result
         """
 
-        i = self._memory[0]            
-        mi1 = self._memory[1]            
-        dcol = self._memory[2]
-
-        print('DEBUG', len(dcol), i, max(dcol.values()))
-        normalise(dcol)
-        return  2**(self._diversity_measure(dcol)), 2**(mi1/float(i))
+        raise NotImplementedError()
             
     def spread_and_divs(self, path, save=True):
         """Spread and compute the diversity on the fly. 
