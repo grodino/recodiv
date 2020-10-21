@@ -15,7 +15,6 @@ import pandas as pd
 
 from utils import normalise
 from utils import add_default
-from utils import normalise_by
 
 
 class Triversity:
@@ -30,9 +29,9 @@ class Triversity:
         """
 
         self.folder_path = Path(folder)
-        generated_folder = self.folder_path.joinpath('generated')
-        if not(generated_folder.is_dir()):
-            generated_folder.mkdir()
+        self.generated_folder_path = self.folder_path.joinpath('generated/')
+        if not(self.generated_folder_path.is_dir()):
+            self.generated_folder_path.mkdir()
 
         self.nb_sets = int(nb_sets)
         self.graphs= [[{} for i in range(0, self.nb_sets)] for j in range(0, self.nb_sets)]
@@ -79,7 +78,7 @@ class Triversity:
         t = perf_counter()
 
         folder_path = Path(folder)
-        generated_folder = folder_path.joinpath('generated/')
+        generated_folder = folder_path.joinpath('generated/dataset/')
         indexes = generated_folder.joinpath(Path('nodes_indexes.csv'))
         indexed_links = generated_folder.joinpath(Path('indexed_links.csv'))
 
@@ -147,11 +146,11 @@ class Triversity:
     def _save_nodes_indexes(self):
         """Save the nodes indexes in a file
 
-        The file is located in the dataset folder in a folder named 'generated'
+        The file is located in the dataset folder in a folder named 'generated/dataset/'
         and is named 'nodes_indexes.csv'
         """
 
-        generated_folder = self.folder_path.joinpath(Path('./generated/'))
+        generated_folder = self.folder_path.joinpath(Path('./generated/dataset/'))
         indexes_path = generated_folder.joinpath(Path('nodes_indexes.csv'))
 
         with open(indexes_path, 'w',  newline='') as csvfile:
@@ -168,10 +167,10 @@ class Triversity:
         generated index
 
         The file must be located in the dataset folder in a folder named
-        'generated' and be named 'nodes_indexes.csv'
+        'generated/dataset/' and be named 'nodes_indexes.csv'
         """
 
-        generated_folder = self.folder_path.joinpath(Path('./generated/'))
+        generated_folder = self.folder_path.joinpath(Path('./generated/dataset/'))
         indexes_path = generated_folder.joinpath(Path('nodes_indexes.csv'))
 
         with open(indexes_path, 'r') as csvfile:
@@ -193,11 +192,11 @@ class Triversity:
     def _save_indexed_links(self):
         """Saves the links with the ids of the nodes instead of their hash
 
-        The file is located in the dataset folder in a folder named 'generated'
-        and is named 'indexed_links.csv'
+        The file is located in the dataset folder in a folder named
+        'generated/dataset/' and is named 'indexed_links.csv'
         """
 
-        generated_folder = self.folder_path.joinpath(Path('./generated/'))
+        generated_folder = self.folder_path.joinpath(Path('./generated/dataset/'))
         indexed_links_path = generated_folder.joinpath(Path('indexed_links.csv'))
 
         with open(indexed_links_path, 'w', newline='') as csvfile:
@@ -223,10 +222,10 @@ class Triversity:
         """Recreates the links between ids from a previously generated file
 
         The file must be located in the dataset folder in a folder named
-        'generated' and be named 'nodes_indexes.csv'
+        'generated/dataset/' and be named 'nodes_indexes.csv'
         """
 
-        generated_folder = self.folder_path.joinpath(Path('./generated/'))
+        generated_folder = self.folder_path.joinpath(Path('./generated/dataset/'))
         indexed_links_path = generated_folder.joinpath(Path('indexed_links.csv'))
 
         with open(indexed_links_path, 'r') as csvfile:
@@ -469,7 +468,8 @@ class Triversity:
         raise NotImplementedError()
             
     def spread_and_divs(self, path, save=True):
-        """Spread and compute the diversity on the fly. 
+        """Spread and compute the diversity via the specified functions (
+        _div_init, _div_add, _div_return)
 
         If already spread just compute the diversity. We use find_last_step just
         one time and not for every nodes.
@@ -565,3 +565,26 @@ class IndividualHerfindahlDiversities(Triversity):
             diversities[node] = self._diversity_measure(distribution)
         
         return diversities
+
+    def diversities(self, path, filename=''):
+        """Compute the Herfindal diversity of each node in the first set
+        traversed by the path.
+
+        :param path: the ids of the sets ("layers") to be traversed (in given
+            order) by the spread.
+        :param filename: If not empty, the result is stored in a file with the
+            specified name in the 'generated' folder.
+
+        :returns: a dict such that result[node_id] = diversity value
+        """
+
+        result = self.spread_and_divs(path, save=True)
+
+        if filename != '':
+            file_path = self.generated_folder_path.joinpath(filename)
+
+            with open(file_path, 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerows(result.items())
+
+        return result

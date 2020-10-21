@@ -35,7 +35,7 @@ print(f'{n_links[0][1]} user -> song links')
 print(f'{n_links[1][2]} song -> category links')
 
 # COMPUTE DIVERSITY ############################################################
-diversities = graph.spread_and_divs((0, 1, 2), save=True)
+diversities = graph.diversities((0, 1, 2), filename='user_diversities.csv')
 print(diversities[0], diversities[1_000])
 print(graph.graphs[0][1][1])
 # print(graph.saved, graph.res)
@@ -49,7 +49,7 @@ print(graph.graphs[0][1][1])
 # test.remove(max(test))
 # test.remove(max(test))
 # test.remove(max(test))
-
+#
 # pl.hist(test, bins=100)
 # pl.show()
 
@@ -69,7 +69,8 @@ users = np.array(users, dtype=np.float32)
 listened_songs = np.array(listened_songs, dtype=np.float32)
 listenings = np.array(users, dtype=np.float32)
 
-listenings_matrix = csr_matrix(
+# Lines = users, columns = songs
+user_songs = csr_matrix(
     (listenings, (users, listened_songs)),
     shape=(n_users, n_songs)
 )
@@ -77,4 +78,11 @@ listenings_matrix = csr_matrix(
 # Optimization recommended by implicit
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 model = implicit.als.AlternatingLeastSquares(factors=20)
-model.fit(listenings_matrix)
+print(model.__dict__)
+model.fit(user_songs)
+
+recommendations = model.recommend(2, user_songs.T.tocsr(), N=10)
+print(recommendations)
+
+print(model)
+print(model.__dict__)
