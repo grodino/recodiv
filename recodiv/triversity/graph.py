@@ -7,9 +7,9 @@ Created on Fri Oct 27 20:31:43 2017
 Modified by Augustin Godinot @ 2020
 """
 import csv
-import math
-from time import perf_counter
+import pickle
 from pathlib import Path
+from time import perf_counter
 
 import pandas as pd
 
@@ -191,48 +191,30 @@ class NPartiteGraph:
                     index_node=False
                 )
 
-    def persist(self, folder_path):
-        """Persists the nodes indexes and indexed links
+    def persist(self, file_path):
+        """Persists the graph instance by pickling it
 
-        :param folder_path: path to the folder where to persist the files
+        :param file_path: the path to the pickle file
         """
 
-        folder_path = Path()
-        nodes_indexes_path = folder_path.joinpath('nodes_indexes.csv')
-        links_path = folder_path.joinpath('links_indexed_nodes.csv')
-
-        print('Persisting nodes indexes ...', end=' ', flush=True)
-        self._save_nodes_indexes(nodes_indexes_path)
-        print('Done')
-
-        print('Persisting indexed links ...', end=' ', flush=True)
-        self._save_indexed_links(links_path)
+        print(f'Persisting {self} into {file_path} ...', end=' ', flush=True)
+        with open(file_path, 'wb') as file:
+            pickle.dump(self, file)
         print('Done')
 
     @classmethod
-    def recall(cls, folder_path, n_sets):
-        """Create a graph from files created by NPartiteGraph.persist
+    def recall(cls, file_path):
+        """Recreates a graph from a pickled one. WARNING only unpickle files you
+        trust !
 
-        :param folder_path: path to the folder containing the files created by
-            NPartiteGraph.persist()
-        :param n_sets: The number n of distinct sets (or "layers") in the
-            n-partite graph
+        :param file_path: the path to the pickle file
 
-        TODO: use pickle ?
+        :returns: the recalled graph
         """
 
-        graph = cls(n_sets)
-
-        folder_path = Path(folder_path)
-        nodes_indexes_path = folder_path.joinpath('nodes_indexes.csv')
-        links_path = folder_path.joinpath('links_indexed_nodes.csv')
-
-        print(f'Recalling nodes index from {nodes_indexes_path} ...', end=' ', flush=True)
-        graph._recall_node_indexes(nodes_indexes_path)
-        print('Done')
-
-        print(f'Recalling indexed links from {links_path} ...', end=' ', flush=True)
-        graph._recall_indexed_links(links_path)
+        print(f'Recalling {file_path} ...', end=' ', flush=True)
+        with open(file_path, 'rb') as file:
+            graph = pickle.load(file)
         print('Done')
 
         return graph
