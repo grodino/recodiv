@@ -13,8 +13,8 @@ from time import perf_counter
 
 import pandas as pd
 
-from triversity.utils import normalise
-from triversity.utils import add_default
+from recodiv.triversity.utils import normalise
+from recodiv.triversity.utils import add_default
 
 
 class NPartiteGraph:
