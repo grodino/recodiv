@@ -555,13 +555,13 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
         
         return diversities
 
-    def diversities(self, path, filename=''):
+    def diversities(self, path, file_path=''):
         """Compute the Herfindal diversity of each node in the first set
         traversed by the path.
 
         :param path: the ids of the sets ("layers") to be traversed (in given
             order) by the spread.
-        :param filename: If not empty, the result is stored in a file with the
+        :param file_path: If not empty, the result is stored in a file with the
             specified name in the 'generated' folder.
 
         :returns: a dict such that result[node_id] = diversity value
@@ -569,9 +569,7 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
 
         result = self.spread_and_divs(path, save=True)
 
-        if filename != '':
-            file_path = self.generated_folder_path.joinpath(filename)
-
+        if file_path != '':
             with open(file_path, 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerows(result.items())

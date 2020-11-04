@@ -1,19 +1,17 @@
 import luigi
-from automan.api import Automator
 
-from automation.msd_dataset import BuildGraph
-from automation.msd_dataset import TrainCollaborativeFiltering
+from automation.msd_dataset import PlotRecommendationsDiversity
+from automation.msd_dataset import PlotDiversityIncrease
 
 
 def main():
-    # automator = Automator(
-    #     simulation_dir='outputs',
-    #     output_dir='figures',
-    #     all_problems=[TrainCollaborativeFiltering]
-    # )
-    # automator.run()
-
-    luigi.build([TrainCollaborativeFiltering(), BuildGraph()], local_scheduler=True)
+    luigi.build(
+        [
+            PlotRecommendationsDiversity(),
+            PlotDiversityIncrease()
+        ],
+        local_scheduler=True
+    )
 
 
 if __name__ == '__main__':
