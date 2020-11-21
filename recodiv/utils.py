@@ -1,12 +1,4 @@
-import os
-import pickle
 from pathlib import Path
-
-import implicit
-import progressbar
-import numpy as np
-from matplotlib import pyplot as pl
-from scipy.sparse import csr_matrix
 
 from recodiv.triversity.graph import IndividualHerfindahlDiversities
 
@@ -41,30 +33,6 @@ def print_song_info(songs_ids, graph, songs_info):
         for category_id in graph.graphs[1][2][song_id].keys():
             print(graph.id_to_hash(category_id, 2), end=' ')
         print()
-
-
-def confidence_matrix(graph, n_users, n_songs):
-    """Returns the sparse confidence matrix of user tastes associated to graph
-    """
-
-    # confidence = 1 + CONFIDENCE_FACTOR*n_listenings
-    CONFDENCE_FACTOR = 40
-
-    users = []
-    listened_songs = []
-    confidences = []
-
-    for user, songs in graph.graphs[0][1].items():
-        for song, occurences in songs.items():
-            users.append(user)
-            listened_songs.append(song)
-            confidences.append(1 + CONFDENCE_FACTOR * occurences)
-
-    # Lines = users, columns = songs
-    return csr_matrix(
-        (confidences, (users, listened_songs)),
-        shape=(n_users, n_songs)
-    )
 
 
 def create_msd_graph(recall_file=None):
@@ -131,59 +99,3 @@ def create_msd_graph(recall_file=None):
     print(f'Average number of tags for a song : {mean_volume}')
 
     return graph, (n_users, n_songs, n_categories)
-
-
-def train_msd_collaborative_filtering(graph, n_users, n_songs):
-    """Train model and return it"""
-
-    N_LATENT_FACTORS = 20
-
-    song_info = get_msd_song_info()
-    confidence = confidence_matrix(graph, n_users, n_songs)
-
-    # Optimization recommended by implicit
-    os.environ['OPENBLAS_NUM_THREADS'] = '1'
-
-    model = implicit.als.AlternatingLeastSquares(
-        factors=N_LATENT_FACTORS,
-        use_cg=True,
-        iterations=5,
-        calculate_training_loss=True
-    )
-    model.fit(confidence.T.tocsr())
-
-    pl.plot(model.loss)
-    pl.show()
-
-    return model
-
-
-def recommendations_graph(graph, model, n_users, n_songs, n_recommendations):
-    """Inserts the recommendations layer to the existing user-song-category
-    graph"""
-
-    confidence = confidence_matrix(graph, n_users, n_songs)
-    recommendations = model.recommend_all(
-        confidence, N=n_recommendations
-    )
-
-    print(recommendations)
-
-    # TODO : test model.recommend_all() to see if their is an improvement
-    for user_id, user_recommendations in progressbar.progressbar(enumerate(recommendations)):
-        for song_id in user_recommendations:
-            # create user -> recommendations link
-            graph.add_link(0, user_id, 3, song_id, weight=1, index_node=False)
-
-            # Create recommendation -> tags links
-            # try:
-            #     tags = graph.graphs[1][2][song_id]
-            #     for tag_id, weight in tags.items():
-            #         graph.add_link(3, song_id, 2, tag_id, weight, index_node=False)
-            # except KeyError:
-            #     pass
-            tags = graph.graphs[1][2][song_id]
-            for tag_id, weight in tags.items():
-                graph.add_link(3, song_id, 2, tag_id, weight, index_node=False)
-
-    return graph
