@@ -1,11 +1,13 @@
 import pickle
 
 import luigi
+import numpy as np
 from matplotlib import pyplot as pl
 
 from recodiv.utils import create_msd_graph
-from recodiv.utils import recommendations_graph
-from recodiv.utils import train_msd_collaborative_filtering
+from recodiv.evaluation import evaluate_model
+from recodiv.model import recommendations_graph
+from recodiv.model import train_msd_collaborative_filtering
 
 
 class BuildUserSongGraph(luigi.Task):
@@ -25,9 +27,11 @@ class TrainCollaborativeFiltering(luigi.Task):
     """Train the Collaborative Filtering for Implicit Data algorithm"""
 
     def output(self):
-        return luigi.LocalTarget(
-            'generated/msd_cf_model', format=luigi.format.Nop
-        )
+        return [
+            luigi.LocalTarget('generated/msd_cf_model', format=luigi.format.Nop),
+            luigi.LocalTarget('generated/msd_cf_train_data', format=luigi.format.Nop),
+            luigi.LocalTarget('generated/msd_cf_test_data', format=luigi.format.Nop)
+        ]
 
     def requires(self):
         return [BuildUserSongGraph()]
@@ -38,11 +42,17 @@ class TrainCollaborativeFiltering(luigi.Task):
         graph, (n_users, n_songs, n_categories) = create_msd_graph(
             recall_file=graph_file.path
         )
-        model = train_msd_collaborative_filtering(graph, n_users, n_songs)
+        model, train_data, test_data = train_msd_collaborative_filtering(graph, n_users, n_songs)
 
-        with self.output().open('wb') as file:
+        with self.output()[0].open('wb') as file:
             pickle.dump(model, file)
 
+        with self.output()[1].open('wb') as file:
+            pickle.dump(train_data, file)
+
+        with self.output()[2].open('wb') as file:
+            pickle.dump(test_data, file)
+        
 
 class BuildCompleteGraph(luigi.Task):
     """Compute recommendations for users and append them to the users-songs-tags
@@ -64,13 +74,60 @@ class BuildCompleteGraph(luigi.Task):
             recall_file=graph_file.path
         )
 
-        with self.input()[1].open('rb') as file:
+        with self.input()[1][0].open('rb') as file:
             model = pickle.load(file)
 
         graph = recommendations_graph(
-            graph, model, n_users, n_songs, n_recommendations=1
+            graph, model, n_users, n_songs, n_recommendations=10
         )
         graph.persist(self.output().path)
+
+
+class EvaluateCFModel(luigi.Task):
+    """Evaluate the Collaborative Filtering model"""
+
+    # def output(self):
+    #     return luigi.LocalTarget(
+
+    #     )
+
+    def requires(self):
+        return [
+            BuildCompleteGraph(), 
+            TrainCollaborativeFiltering()
+        ]
+
+    def run(self):
+        graph_file = self.input()[0]
+
+        graph, (n_users, n_songs, n_categories) = create_msd_graph(
+            recall_file=graph_file.path
+        )
+
+        recommendations = []
+        for user, songs in graph.graphs[0][3].items():
+            sorted_songs = sorted(songs.items(), key=lambda s: s[1])
+            
+            recommendations.append(
+                [song_id for song_id, _ in sorted_songs]
+            )
+        recommendations = np.array(recommendations, dtype=int)
+
+        with self.input()[1][0].open('rb') as file:
+            model = pickle.load(file)
+
+        with self.input()[1][1].open('rb') as file:
+            train_data = pickle.load(file)
+            
+        with self.input()[1][2].open('rb') as file:
+            test_data = pickle.load(file)
+
+        print(evaluate_model(
+            n_users, 
+            n_songs, 
+            test_data,
+            recommendations
+        ))
 
 
 class ComputeRecommendationsDiversities(luigi.Task):
