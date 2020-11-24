@@ -1,6 +1,9 @@
 # Pycharm files
 .idea/
 
+# VSCode files
+.vscode/
+
 # data files
 recodiv/data/
 
