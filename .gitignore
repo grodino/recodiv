@@ -5,7 +5,7 @@
 .vscode/
 
 # data files
-recodiv/data/
+data/
 
 # generated files
 generated/
