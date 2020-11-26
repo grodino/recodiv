@@ -36,6 +36,12 @@ The choosen library should have the following properties:
 - Common models (Collaborative filtering, implicit or not ...) are implemented or are easy to implement
 - Common metrics (Recall, AUC, )
 
+### A note on diversity metrics
+
+Take a look at [spotify research](https://dl.acm.org/doi/10.1145/3366423.3380281) for diversity calculation with song embedding.
+Here, diversity is clearely stated as diversity of audience for tags and diversity of categories listenend for users. 
+An index is computed overs an emprirical distribution; this is something biologist do a lot : [Rényi Entropy](https://en.wikipedia.org/wiki/R%C3%A9nyi_entropy), [a bio article](http://www.cambridge.org/core/journals/journal-of-tropical-ecology/article/new-local-estimator-of-regional-species-diversity-in-terms-of-shadow-species-with-a-case-study-from-sumatra/3862C02AFFBD2954004A9BB0A827A7E5)
+ 
 
 ## Licences
 * The code in `recodiv/triversity/` is adapted from [triversity](https://github.com/Nobody35/triversity)
