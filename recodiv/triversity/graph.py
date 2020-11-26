@@ -27,7 +27,6 @@ class NPartiteGraph:
 
         self.nb_sets = int(nb_sets)
         self.graphs= [[{} for i in range(0, self.nb_sets)] for j in range(0, self.nb_sets)]
-        self.linkedTrees= [dict() for i in range(0, self.nb_sets)]
     
         # care it need 2 s its a list of dictionnary (node,linked tree)
         # a linked tree is a dictionnary path -> distribution
@@ -254,7 +253,11 @@ class NPartiteGraph:
         :param destination_node: The id of the destination node
         :param weight: the weight of the link between the two nodes
         """
+
+        # Fetch origin node already known, else create it
         d = self.graphs[origin_set][destination_set].setdefault(origin_node, dict())
+
+        # Add the neighbor (or update the weight)
         add_default(d, destination_node, weight)
 
     def add_link(self, origin_set, origin_node, destination_set, destination_node, weight, index_node=True):
@@ -284,20 +287,6 @@ class NPartiteGraph:
         self.add_link_d(origin_set, origin_node_id, destination_set, destination_node_id, weight)
         self.add_link_d(destination_set, destination_node_id, origin_set, origin_node_id, weight)
     
-    def new_tree(self, node, set_id):
-        """Create a new tree
-        
-        :param node: the node at the origin of the tree
-        :param set_id: the id of the set (or "layer") of the n-partite graph
-            which the node belongs to
-
-        :returns: the newly created  empty tree (a dictionnay)
-        """
-
-        self.linkedTrees[set_id][node] = dict()
-        
-        return self.linkedTrees[set_id][node]
-         
     def normalise_all(self):
         """Normalise the weights of the links coming out of each node so that
         the sum of the weights is unitary"""    
@@ -306,89 +295,7 @@ class NPartiteGraph:
             for g in gs:
                 for d in g.values():
                     normalise(d)
-         
-    def find_last_saved(self, path):
-        """Finds the last step already computed in a sets path
-
-        If path = (1, 2, 3, 6) and we already spread and saved the path (1, 2, 3), this
-        function will return the index of the last step that was computed : 2
-
-        :param path: the ids of the sets ("layers") to be traversed (in given order) by the spread.
-
-        :returns: The id of the last sted already computed
-        """
-        i = 3
-        n = len(path)
-
-        while ((i <= n) and (path[:i] in self.saved)):
-            i += 1 
-
-        i = i-1
-        return i
-
-    def _spread_to_neighbors(self, distrib_in, origin_set, destination_set):  
-        """Computes the neighbors distribution.
-
-        Given a given node distribution (probability to arrive at each node), it
-        computes the distribution of the neighbors (probability to arrive at
-        each neighbor of each node in the original distribution).
-
-        :param distrib_in: a dictionnary with nodes as keys and probability as
-            value (distrib_in[node] = probability)
-        :param origin_set: The id of the set (or "layer") in which the nodes of 
-            distrib_in are
-        :param destination_set: The id of the set (or "layer") in which the 
-            neighbors of the nodes of distrib_in must be fetched
-
-        :returns: the distribution of the neighbors
-        """
-        distribution = {}
-
-        for node, probability in distrib_in.items():
-            for neighbor, weight in self.graphs[origin_set][destination_set][node].items():
-                add_default(distribution, neighbor, probability*weight)
-        
-        return distribution
-        
-    def _spread_path(self, last_distribution, path, save_spread, tree=None, complete_path=None, last_saved_path_step=None):
-        """Computes the transition probabilities for walks constrained by path.
-
-        More precisely, this computes the probability to go from each node in
-        the set path[0] to each node in the set path[-1], traversing the sets path[1:-2]
-
-        :param last_distribution: a dictionnary with nodes as keys and probability as
-            value (distrib_in[node] = probability). This represents the transition 
-            probabilities from a specific node (unknown by _spread_path)
-        :param path: the ids of the sets ("layers") to be traversed (in given
-            order) by the spread.
-        :param save_spread: boolean. If true, save the distribution of each step in a tree
-        :param tree: the memory in which to store the tree (must be a dict)
-        :param complete_path: the ids of the sets ("layers") to be traversed (in given
-            order) by the spread in its whole.
-        :param last_saved_path_step: int, the id of the last path for which we saved the spread
-
-        :returns: the distribution : a dict with dict[node] = probability to
-            reach this node via the given path
-        """
-
-        if save_spread and (tree == None or complete_path == None or last_saved_path_step == None):
-            raise ValueError('If you want to save the spread, you have to provide the args tree, path and i_split.')
-        
-        distribution = last_distribution
-        last_path_set = path[0]
-        j = last_saved_path_step #just for save
-
-        for set_id in path[1:]:
-            j +=1            
-            distribution = self._spread_to_neighbors(distribution, last_path_set, set_id)
-
-            if save_spread:
-                tree[path[:j]] = distribution
-
-            last_path_set = set_id
-
-        return distribution
-        
+    
     def _diversity_measure(self, distribution):
         """Compute the diversity of a node with the given neighbors distribution.
 
@@ -439,8 +346,72 @@ class NPartiteGraph:
         """
 
         raise NotImplementedError()
+
+    def _spread_to_neighbors(self, distrib_in, origin_set, destination_set):  
+        """Computes the neighbors distribution.
+
+        Given a given node distribution (probability to arrive at each node), it
+        computes the distribution of the neighbors (probability to arrive at
+        each neighbor of each node in the original distribution).
+
+        :param distrib_in: a dictionnary with nodes as keys and probability as
+            value (distrib_in[node] = probability)
+        :param origin_set: The id of the set (or "layer") in which the nodes of 
+            distrib_in are
+        :param destination_set: The id of the set (or "layer") in which the 
+            neighbors of the nodes of distrib_in must be fetched
+
+        :returns: the distribution of the neighbors
+        """
+        distribution = {}
+
+        for node, probability in distrib_in.items():
+
+            # If node has no neighbor in the next layer (dead end in the path) 
+            # we have two options :
+            #   - redristribute its weight to the nodes linked to its parent in
+            #     the path
+            #   - do nothing and accept the the resulting distribution will not
+            #     sum to 1
+            # For now, we do nothing.
+            if node in self.graphs[origin_set][destination_set].keys():
+                for neighbor, weight in self.graphs[origin_set][destination_set][node].items():
+                    add_default(distribution, neighbor, probability*weight)
             
-    def spread_and_divs(self, path, save=True):
+            else:
+                # print(f'WARNING node {node} not in links ({origin_set} -> {destination_set})')
+                pass
+                
+        
+        return distribution
+        
+    def _spread_path(self, last_distribution, path):
+        """Computes the transition probabilities for walks constrained by path.
+
+        More precisely, this computes the probability to go from each node in
+        the set path[0] to each node in the set path[-1], traversing the sets path[1:-2]
+
+        :param last_distribution: a dictionnary with nodes as keys and probability as
+            value (distrib_in[node] = probability). This represents the transition 
+            probabilities from a specific node (unknown by _spread_path)
+        :param path: the ids of the sets ("layers") to be traversed (in given
+            order) by the spread.
+
+        :returns: the distribution : a dict with dict[node] = probability to
+            reach this node via the given path
+        """
+
+        distribution = last_distribution
+        last_set_id = path[0]
+
+        for set_id in path[1:]:
+            distribution = self._spread_to_neighbors(distribution, last_set_id, set_id)
+
+            last_set_id = set_id
+
+        return distribution
+            
+    def spread_and_divs(self, path):
         """Spread and compute the diversity via the specified functions (
         _div_init, _div_add, _div_return)
 
@@ -448,7 +419,6 @@ class NPartiteGraph:
         one time and not for every nodes.
 
         :param path: the ids of the sets ("layers") to be traversed (in given order) by the spread.
-        :param save: save the results of the diversity calculation
         """
         
         if path in self.res:
@@ -456,37 +426,13 @@ class NPartiteGraph:
             return self.res[path]
 
         self._div_init(self.last_id[path[0]], self.last_id[path[-1]])
-        i_split = self.find_last_saved(path)
 
-        if i_split == 2: #there is no trees
-            path0 = path[0]
-            path1 = path[1]
-            new_path = path[2:]
-
-            for node, neighbors in self.graphs[path0][path1].items():
-                if save and len(path) > 2:
-                    tree = self.new_tree(node, path0)
-                else:
-                    tree = None
-                
-                distribution = self._spread_path(neighbors, path[1:], save, tree, path, i_split)
-                self._div_add(node, distribution)
-        
-        else:
-            last_path = path[:i_split]
-
-            print("Already spread until:" + str(last_path))
-            for node,tree in self.linkedTrees[path[0]].items():
-                d = tree[last_path]
-                diversities = self._spread_path(d, path[i_split-1:], save, tree, path, i_split)
-                self._div_add(node, diversities)
+        for node, neighbors in self.graphs[path[0]][path[1]].items():            
+            distribution = self._spread_path(neighbors, path[1:])
+            self._div_add(node, distribution)
         
         res = self._div_return()
         self.res[path] = res
-        
-        if save:
-            for j in range(2,len(path)+1):
-                self.saved.add(path[:j])       
         
         return res
 
@@ -567,7 +513,7 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
         :returns: a dict such that result[node_id] = diversity value
         """
 
-        result = self.spread_and_divs(path, save=True)
+        result = self.spread_and_divs(path)
 
         if file_path != '':
             with open(file_path, 'w', newline='') as csvfile:
