@@ -1,127 +1,156 @@
 import os
 import pickle
 from pathlib import Path
+from time import perf_counter
 
-import implicit
-from implicit.evaluation import train_test_split
-from implicit.evaluation import ranking_metrics_at_k
-import progressbar
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
 from matplotlib import pyplot as pl
-from scipy.sparse import csr_matrix
 
-from pyspark import SparkConf, SparkContext
-from pyspark.mllib.recommendation import ALS, MatrixFactorizationModel, Rating
+from lenskit import topn
+from lenskit import util
+from lenskit import batch
+from lenskit import crossfold as xf
+from lenskit.algorithms import als
+from lenskit.algorithms import Recommender
+
 
 from recodiv.utils import print_song_info
 from recodiv.utils import get_msd_song_info
-from recodiv.evaluation import mean_percentile_rank
 
 
-def confidence_matrix(graph, n_users, n_songs):
-    """Returns the sparse confidence matrix of user tastes associated to graph
+# util.log_to_stderr()
+METRICS = {
+    'ndcg': topn.ndcg,
+    'recall': topn.recall,
+    'precision': topn.precision,
+    'recip_rank': topn.recip_rank
+}
+
+
+def import_and_split(folder):
+    """Import a dataset and split it in train/test data"""
+
+    ratings = pd.read_csv(
+        'recodiv/data/million_songs_dataset/msd_users.txt',
+        sep=' ',
+        names=['node1_level', 'user', 'node2_level', 'item', 'rating'],
+        dtype={
+            'node1_level': np.int8,
+            'node2_level': np.int8,
+            'user': np.str,
+            'item': np.str,
+            'rating': np.int32
+        },
+        nrows=1_000_000,
+        engine='c'
+    )[['user', 'item', 'rating']]
+
+    tags = pd.read_csv(
+        'recodiv/data/million_songs_dataset/msd_tags.txt',
+        sep=' ',
+        names=['node1_level', 'item', 'node2_level', 'tag', 'tag_weight'],
+        dtype={
+            'node1_level': np.int8,
+            'node2_level': np.int8,
+            'item': np.str,
+            'tag': np.str,
+            'weight': np.int32
+        },
+        engine='c'
+    )[['item', 'tag', 'tag_weight']]
+
+    # There are many ways to separate a dataset in (train, test) data, here are two:
+    #   - Row separation: the test set will contain users that the model knows.
+    #     The performance of the model will be its ability to predict "new" 
+    #     tastes for a known user
+    #   - User separation: the test set will contain users that the model has
+    #     never encountered. The performance of the model will be its abiliy to
+    #     predict new users behaviours considering the behaviour of other
+    #     known users.
+    # see [lkpy documentation](https://lkpy.readthedocs.io/en/stable/crossfold.html)
+    train, test = xf.sample_rows(
+        ratings[['user', 'item', 'rating']], 
+        None,
+        1_000
+    )
+
+    return train, test
+
+
+def train_model(
+        train, 
+        test, 
+        n_factors=30, 
+        n_iterations=20, 
+        regularization=.1, 
+        evaluate_iterations=False,
+        iteration_metrics=None,
+        n_recommendations=50):
+    """Train (and evaluate iterations if requested) model
+    
+    :returns: (model, iterations_metrics). If evaluate_iterations == False,
+        metrics is an empty pd.DataFrame
     """
 
-    # confidence = 1 + CONFIDENCE_FACTOR*n_listenings
-    CONFIDENCE_FACTOR = 40
-
-    users = []
-    listened_songs = []
-    confidences = []
-
-    for user, songs in graph.graphs[0][1].items():
-        for song, occurrences in songs.items():
-            users.append(user)
-            listened_songs.append(song)
-            confidences.append(1 + CONFIDENCE_FACTOR * occurrences)
-
-    # Lines = users, columns = songs
-    return csr_matrix(
-        (confidences, (users, listened_songs)),
-        shape=(n_users, n_songs)
+    model = Recommender.adapt(
+        als.ImplicitMF(n_factors, iterations=n_iterations, progress=tqdm)
     )
+    metrics = pd.DataFrame()
 
+    if evaluate_iterations:
+        # Prepare metrics calculation
+        analysis = topn.RecListAnalysis()
+        users = test.user.unique()
 
-def train_msd_collaborative_filtering(graph, n_users, n_songs):
-    """Train model and return it"""
+        for metric_name in iteration_metrics:
+            analysis.add_metric(METRICS[metric_name])
 
-    N_LATENT_FACTORS = 100
+        for iteration, intermediate_model in enumerate(model.fit_iters(train)):
+            # Create recommendations
+            recommendations = batch.recommend(intermediate_model, users, n_recommendations)
 
-    song_info = get_msd_song_info()
-    confidence = confidence_matrix(graph, n_users, n_songs)
+            # Compute and save metrics
+            results = analysis.compute(recommendations, test)
+            results['iteration'] = iteration
+            metrics = pd.concat([metrics, results], ignore_index=True)
+        
+        metrics = metrics.groupby('iteration')[list(iteration_metrics)].mean()
+            
+        # metrics.plot(
+        #     logy=True, title='metrics with respect to iteration count'
+        # )
+        # pl.show()
 
-    # Optimization recommended by implicit
-    os.environ['OPENBLAS_NUM_THREADS'] = '1'
-
-    # model = implicit.als.AlternatingLeastSquares(
-    #     regularization=0.015,
-    #     iterations=1,
-    #     factors=N_LATENT_FACTORS,
-    #     use_cg=True,
-    #     calculate_training_loss=True
-    # )
-    model = implicit.lmf.LogisticMatrixFactorization(
-        factors=N_LATENT_FACTORS,
-        learning_rate=1.00,
-        regularization=0.6,
-        dtype=np.float32,
-        iterations=30,
-        neg_prop=30
-    )
-
-    train_confidence, test_confidence = train_test_split(
-        confidence,
-        train_percentage=0.8
-    )
-
-    model.fit(train_confidence.T.tocsr())
+    else:
+        model.fit(train)
+    
+    return model, metrics
     
 
-    # # Best regularization = 0.015 in [0.008, 0.009, 0.01, 0.015, 0.02]
-    # for epoch in range(50):
-    #     # model = implicit.lmf.LogisticMatrixFactorization(
-    #     #     factors=N_LATENT_FACTORS,
-    #     #     learning_rate=1.00,
-    #     #     regularization=0.6,
-    #     #     dtype=np.float32,
-    #     #     iterations=30,
-    #     #     neg_prop=30
-    #     # )
+def generate_recommendations(model, train, test, n_recommendations=50, mode='all'):
+    """Generate recommendations for a given model
+    
+    :param mode: 'all' or 'test'. Generate recommendations for all users
+        in dataset or just for users in test data
+    """
 
-    #     model.fit(train_confidence.T.tocsr())
+    if mode == 'all':
+        users = test.user.unique()
+    elif mode == 'test':
+        users = pd.concat([train, test]).user.unique()
+    else:
+        raise NotImplementedError(f'Recommendation mode {mode} is not implemented')
 
-    #     # metrics.append(ranking_metrics_at_k(
-    #     #     model,
-    #     #     train_confidence.T.tocsr(),
-    #     #     test_confidence.T.tocsr(),
-    #     #     K=10,
-    #     #     show_progress=True
-    #     # ))
-
-    #     recommendations = model.recommend_all(
-    #         train_confidence,
-    #         N=10,
-    #         filter_already_liked_items=False,
-    #         show_progress=True
-    #     )
-    #     MPR = mean_percentile_rank(test_confidence, recommendations)
-    #     print(MPR)
+    return batch.recommend(model, users, n_recommendations)
 
 
-    return model, train_confidence, test_confidence
-
-
-def recommendations_graph(graph, model, n_users, n_songs, n_recommendations):
+def recommendations_graph(recommendation):
     """Inserts the recommendations layer to the existing user-song-category
     graph"""
 
-    confidence = confidence_matrix(graph, n_users, n_songs)
-    recommendations = model.recommend_all(
-        confidence, N=n_recommendations, filter_already_liked_items=False
-    )
-
-    # TODO : test model.recommend_all() to see if their is an improvement
-    for user_id, user_recommendations in progressbar.progressbar(enumerate(recommendations)):
+    for user_id, user_recommendations in tqdm(enumerate(recommendations)):
         for rank, song_id in enumerate(user_recommendations):
             # create user -> recommendations link
             graph.add_link(0, user_id, 3, song_id, weight=1/(rank + 1), index_node=False)
@@ -138,3 +167,7 @@ def recommendations_graph(graph, model, n_users, n_songs, n_recommendations):
                 graph.add_link(3, song_id, 2, tag_id, weight, index_node=False)
 
     return graph
+
+
+if __name__ == '__main__':
+    train_msd_collaborative_filtering1()
