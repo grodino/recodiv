@@ -11,6 +11,7 @@ import pickle
 from pathlib import Path
 from time import perf_counter
 
+import numpy as np
 import pandas as pd
 
 from recodiv.triversity.utils import normalise
@@ -80,13 +81,27 @@ class NPartiteGraph:
                     file_name,
                     sep=' ',
                     names=['node1_level', 'node1', 'node2_level', 'node2', 'weight'],
+                    dtype={
+                        'node1_level': np.int8,
+                        'node2_level': np.int8,
+                        'node1': np.str,
+                        'node2': np.str,
+                        'weight': np.int32
+                    },
                     nrows=n_rows
                 )
             else:
                 dataset = pd.read_csv(
                     file_name,
                     sep=' ',
-                    names=['node1_level', 'node1', 'node2_level', 'node2', 'weight']
+                    names=['node1_level', 'node1', 'node2_level', 'node2', 'weight'],
+                    dtype={
+                        'node1_level': np.int8,
+                        'node2_level': np.int8,
+                        'node1': np.str,
+                        'node2': np.str,
+                        'weight': np.int32
+                    },
                 )
 
             print('Done')
@@ -452,6 +467,21 @@ class NPartiteGraph:
         else:
             return [self.revids[set_id][node_id] for node_id in ids]
 
+    def n_links(self, from_set, to_set):
+        """Returns the number of links from as layer to an other
+        
+        :param from_set: id of the origin layer
+        :param to_set: id of the destination layer
+        """
+
+        n = 0
+
+        for node, neigbours in self.graphs[from_set][to_set].items():
+            n += len(neigbours)
+
+        return n
+
+
 
 class IndividualHerfindahlDiversities(NPartiteGraph):
     def _diversity_measure(self, distribution):
@@ -501,23 +531,16 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
         
         return diversities
 
-    def diversities(self, path, file_path=''):
+    def diversities(self, path):
         """Compute the Herfindal diversity of each node in the first set
         traversed by the path.
 
         :param path: the ids of the sets ("layers") to be traversed (in given
             order) by the spread.
-        :param file_path: If not empty, the result is stored in a file with the
-            specified name in the 'generated' folder.
 
         :returns: a dict such that result[node_id] = diversity value
         """
 
         result = self.spread_and_divs(path)
-
-        if file_path != '':
-            with open(file_path, 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerows(result.items())
 
         return result
