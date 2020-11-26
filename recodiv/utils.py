@@ -35,67 +35,40 @@ def print_song_info(songs_ids, graph, songs_info):
         print()
 
 
-def create_msd_graph(recall_file=None):
-    """Creates and returns the tri-partite graph associated to the Million Songs
-    Dataset along some metadata
-
-    :param recall_file: the file path to from which to recall the graph
-
-    :returns: graph, (n_users, n_songs, n_categories)
-    """
-
-    # EXPERIMENT CONSTANTS #####################################################
-    DATASET_FOLDER = 'recodiv/data/million_songs_dataset/'
-    N_ENTRIES = 1_000_000  # Number of data entries to read
-    # Number n of nodes sets (or "layers") of the n-partite graph: users, songs,
-    # categories and recommendations
-    N_LAYERS = 4
-
-    # GRAPH BUILDING ###########################################################
-    if not(recall_file):
-        graph = IndividualHerfindahlDiversities.from_folder(
-            DATASET_FOLDER,
-            N_LAYERS,
-            n_entries=[0, N_ENTRIES]
-        )
-
-    else:
-        graph = IndividualHerfindahlDiversities.recall(recall_file)
-
+def dataset_info(graph):
+    """Returns information on the dataset (number of users, links ...)"""
 
     n_users = len(graph.ids[0])
     n_songs = len(graph.ids[1])
-    n_categories = len(graph.ids[2])
+    n_tags = len(graph.ids[2])
 
-    print(f'{n_users} users')
-    print(f'{n_songs} songs')
-    print(f'{n_categories} categories')
+    n_user_song_links = graph.n_links(0, 1)
+    n_song_tag_links = graph.n_links(1, 2)
 
-
-    n_links = [[sum([len(items[1]) for items in destination.items()]) for destination in origin] for origin in graph.graphs]
-    print(f'{n_links[0][1]} user -> song links')
-    print(f'{n_links[0][3]} user -> recommendation links')
-    print(f'{n_links[1][2]} song -> category links')
-    print(f'{n_links[3][2]} recommendation -> category links')
-
-    user_volume = [
+    user_song_volume = [
         (user, len(songs.keys())) for user, songs in graph.graphs[0][1].items()
     ]
-    _, max_volume = max(user_volume, key=lambda x: x[1])
-    _, min_volume = min(user_volume, key=lambda x: x[1])
-    mean_volume = sum(volume for _, volume in user_volume) / n_users
-    print(f'Minimum number of songs listened by a user : {min_volume}')
-    print(f'Maximum number of songs listened by a user : {max_volume}')
-    print(f'Average number of songs listened by a user : {mean_volume}')
+    _, max_user_song_volume = max(user_song_volume, key=lambda x: x[1])
+    _, min_user_song_volume = min(user_song_volume, key=lambda x: x[1])
+    mean_user_song_volume = sum(volume for _, volume in user_song_volume) / n_users
 
-    tag_volume = [
+    song_tag_volume = [
         (song, len(tags.keys())) for song, tags in graph.graphs[1][2].items()
     ]
-    _, max_volume = max(tag_volume, key=lambda x: x[1])
-    _, min_volume = min(tag_volume, key=lambda x: x[1])
-    mean_volume = sum(volume for _, volume in tag_volume) / n_songs
-    print(f'Minimum number of tags for a song : {min_volume}')
-    print(f'Maximum number of tags for a song : {max_volume}')
-    print(f'Average number of tags for a song : {mean_volume}')
+    _, max_song_tag_volume = max(song_tag_volume, key=lambda x: x[1])
+    _, min_song_tag_volume = min(song_tag_volume, key=lambda x: x[1])
+    mean_song_tag_volume = sum(volume for _, volume in song_tag_volume) / n_songs
 
-    return graph, (n_users, n_songs, n_categories)
+    return {
+        'n_users': n_users,
+        'n_songs': n_songs,
+        'n_tags': n_tags,
+        'n_users_song_links': n_user_song_links,
+        'n_song_tag_links': n_song_tag_links,
+        'max_user_song_volume': max_user_song_volume,
+        'max_song_tag_volume': max_song_tag_volume,
+        'min_user_song_volume': min_user_song_volume,
+        'min_song_tag_volume': min_song_tag_volume,
+        'mean_user_song_volume': mean_user_song_volume,
+        'mean_song_tag_volume': mean_song_tag_volume,
+    }

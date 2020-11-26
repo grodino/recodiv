@@ -1,3 +1,4 @@
+import json
 import pickle
 from pathlib import Path
 
@@ -8,29 +9,130 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as pl
 
-from recodiv.utils import create_msd_graph
+from recodiv.utils import dataset_info
 from recodiv.model import train_model
 from recodiv.model import import_and_split
-from recodiv.model import generate_recommendations
-from recodiv.model import recommendations_graph
+from recodiv.triversity.graph import IndividualHerfindahlDiversities
 
 
 # Path to generated folder
 GENERATED = Path('generated/')
 
 
-class BuildUserSongGraph(luigi.Task):
+class BuildDatasetGraph(luigi.Task):
     """Build users-songs-tags graph"""
+    dataset_name = luigi.parameter.Parameter(
+        description='Name of the imported dataset'
+    )
+    dataset_folder = luigi.parameter.Parameter(
+        description='Path to the dataset folder'
+    )
 
     def output(self):
-        return luigi.LocalTarget('generated/msd_graph', format=luigi.format.Nop)
+        dataset = GENERATED.joinpath(f'dataset-{self.dataset_name}')
+
+        return luigi.LocalTarget(
+            dataset.joinpath('graph.bpk'),
+            format=luigi.format.Nop
+        )
 
     def run(self):
-        graph, _ = create_msd_graph()
-        # TODO : save dataset stats (number of users, songs, tags, links, songs not listened ...)
-
-        self.output().makedirs()
+        self.output().makedirs()        
+        graph = IndividualHerfindahlDiversities.from_folder(
+            self.dataset_folder,
+            n_sets=4,
+            n_entries=[0, 1_000_000]
+        )
         graph.persist(self.output().path)
+
+
+class DatasetInfo(luigi.Task):
+    """Save information on dataset (number of links, users ...)"""
+
+    dataset_name = luigi.parameter.Parameter(
+        description='Name of the imported dataset'
+    )
+    dataset_folder = luigi.parameter.Parameter(
+        description='Path to the dataset folder'
+    )
+
+    def output(self):
+        dataset = GENERATED.joinpath(f'dataset-{self.dataset_name}')
+        return luigi.LocalTarget(dataset.joinpath('info.json'))
+
+    def requires(self):
+        return BuildDatasetGraph(
+            dataset_name=self.dataset_name, dataset_folder=self.dataset_folder
+        )
+        
+
+    def run(self):
+        graph_file = self.input()
+        graph = IndividualHerfindahlDiversities.recall(graph_file.path)
+
+        with self.output().open('w') as file:
+            json.dump(dataset_info(graph), file, indent=4)
+
+
+class ComputeUsersDiversities(luigi.Task):
+    """Compute the diversity of the songs listened by users"""
+
+    dataset_name = luigi.parameter.Parameter(
+        description='Name of the imported dataset'
+    )
+    dataset_folder = luigi.parameter.Parameter(
+        description='Path to the dataset folder'
+    )
+
+    def output(self):
+        dataset = GENERATED.joinpath(f'dataset-{self.dataset_name}')
+        return luigi.LocalTarget(dataset.joinpath('users_diversities.csv'))
+
+    def requires(self):
+        return BuildDatasetGraph(
+            dataset_name=self.dataset_name, dataset_folder=self.dataset_folder
+        )
+
+    def run(self):
+        graph_file = self.input()
+        graph = IndividualHerfindahlDiversities.recall(graph_file.path)
+
+        graph.normalise_all()
+        diversities = graph.diversities((0, 1, 2))
+
+        pd.DataFrame({
+            'user': list(diversities.keys()), 
+            'diversity': list(diversities.values())
+        }).to_csv(self.output().path, index=False)
+
+
+class PlotUsersDiversitiesHistogram(luigi.Task):
+    """Plot the histogram of user diversity"""
+
+    dataset_name = luigi.parameter.Parameter(
+        description='Name of the imported dataset'
+    )
+    dataset_folder = luigi.parameter.Parameter(
+        description='Path to the dataset folder'
+    )
+
+    def output(self):
+        dataset = GENERATED.joinpath(f'dataset-{self.dataset_name}')
+        return luigi.LocalTarget(dataset.joinpath('user_diversity_histogram.png'))
+
+    def requires(self):
+        return ComputeUsersDiversities(
+            dataset_name=self.dataset_name, dataset_folder=self.dataset_folder
+        )
+    
+    def run(self):
+        diversities = pd.read_csv(self.input().path)
+
+        pl.hist(diversities['diversity'].where(lambda x: x < 40), bins=100)
+        pl.xlabel('Diversity index')
+        pl.ylabel('Count')
+        pl.title('Histogram of user diversity score')
+        pl.savefig(self.output().path, format='png', dpi=300)
 
 
 class GenerateTrainTest(luigi.Task):
@@ -249,54 +351,6 @@ class BuildCompleteGraph(luigi.Task):
         graph.persist(self.output().path)
 
 
-class EvaluateCFModel(luigi.Task):
-    """Evaluate the Collaborative Filtering model"""
-
-    def output(self):
-        return luigi.LocalTarget('generated/metrics', format=luigi.format.Nop)
-
-    def requires(self):
-        return [
-            BuildCompleteGraph(), 
-            TrainCollaborativeFiltering()
-        ]
-
-    def run(self):
-        graph_file = self.input()[0]
-
-        graph, (n_users, n_songs, n_categories) = create_msd_graph(
-            recall_file=graph_file.path
-        )
-
-        recommendations = []
-        for user, songs in graph.graphs[0][3].items():
-            sorted_songs = sorted(songs.items(), key=lambda s: s[1])
-            
-            recommendations.append(
-                [song_id for song_id, _ in sorted_songs]
-            )
-        recommendations = np.array(recommendations, dtype=int)
-
-        with self.input()[1][0].open('rb') as file:
-            model = pickle.load(file)
-
-        with self.input()[1][1].open('rb') as file:
-            train_data = pickle.load(file)
-            
-        with self.input()[1][2].open('rb') as file:
-            test_data = pickle.load(file)
-
-        metrics = evaluate_model(
-            n_users, 
-            n_songs, 
-            test_data,
-            recommendations
-        )
-
-        with self.output().open('wb') as file:
-            pickle.dump(metrics)
-
-
 class ComputeRecommendationsDiversities(luigi.Task):
     """Compute the recommendations diversity from the user point of view"""
 
@@ -315,24 +369,6 @@ class ComputeRecommendationsDiversities(luigi.Task):
             (0, 3, 2), file_path=self.output().path
         )
 
-
-class ComputeUsersDiversities(luigi.Task):
-    """Compute the diversity of the songs listened by users"""
-
-    def output(self):
-        return luigi.LocalTarget('generated/user_diversities.csv')
-
-    def requires(self):
-        return [BuildUserSongGraph()]
-
-    def run(self):
-        graph_file = self.input()[0]
-        graph, _ = create_msd_graph(recall_file=graph_file.path)
-
-        graph.normalise_all()
-        _ = graph.diversities(
-            (0, 1, 2), file_path=self.output().path
-        )
 
 
 class PlotRecommendationsDiversity(luigi.Task):

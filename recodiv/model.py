@@ -31,9 +31,10 @@ METRICS = {
 
 def import_and_split(folder):
     """Import a dataset and split it in train/test data"""
+    dataset_folder = Path(folder)
 
     ratings = pd.read_csv(
-        'recodiv/data/million_songs_dataset/msd_users.txt',
+        dataset_folder.joinpath('msd_users.txt'),
         sep=' ',
         names=['node1_level', 'user', 'node2_level', 'item', 'rating'],
         dtype={
@@ -48,7 +49,7 @@ def import_and_split(folder):
     )[['user', 'item', 'rating']]
 
     tags = pd.read_csv(
-        'recodiv/data/million_songs_dataset/msd_tags.txt',
+        dataset_folder.joinpath('msd_tags.txt'),
         sep=' ',
         names=['node1_level', 'item', 'node2_level', 'tag', 'tag_weight'],
         dtype={
@@ -145,29 +146,3 @@ def generate_recommendations(model, train, test, n_recommendations=50, mode='all
 
     return batch.recommend(model, users, n_recommendations)
 
-
-def recommendations_graph(recommendation):
-    """Inserts the recommendations layer to the existing user-song-category
-    graph"""
-
-    for user_id, user_recommendations in tqdm(enumerate(recommendations)):
-        for rank, song_id in enumerate(user_recommendations):
-            # create user -> recommendations link
-            graph.add_link(0, user_id, 3, song_id, weight=1/(rank + 1), index_node=False)
-
-            # Create recommendation -> tags links
-            # try:
-            #     tags = graph.graphs[1][2][song_id]
-            #     for tag_id, weight in tags.items():
-            #         graph.add_link(3, song_id, 2, tag_id, weight, index_node=False)
-            # except KeyError:
-            #     pass
-            tags = graph.graphs[1][2][song_id]
-            for tag_id, weight in tags.items():
-                graph.add_link(3, song_id, 2, tag_id, weight, index_node=False)
-
-    return graph
-
-
-if __name__ == '__main__':
-    train_msd_collaborative_filtering1()

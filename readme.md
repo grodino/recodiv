@@ -5,7 +5,7 @@ The entry point of the code is the `main.py` function at the root of the project
 function will recreate all the figures shown in the report.
 
 * The core logic (machine learning models, graph objects and methods) is located in `./recodiv/`. 
-* The data folder (not hosted on Github) must be `./recodiv/data/{data_set_name}/`
+* The data folder (not hosted on Github) must be `./data/{data_set_name}/`
 * The automation logic (users-songs-tags graphs instanciation, ML model instanciation, figure 
 computation... ) is located in `./automation/`. 
 
