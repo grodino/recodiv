@@ -29,38 +29,8 @@ METRICS = {
 }
 
 
-def import_and_split(folder, test_fraction=.1):
-    """Import a dataset and split it in train/test data"""
-    dataset_folder = Path(folder)
-
-    ratings = pd.read_csv(
-        dataset_folder.joinpath('msd_users.txt'),
-        sep=' ',
-        names=['node1_level', 'user', 'node2_level', 'item', 'rating'],
-        dtype={
-            'node1_level': np.int8,
-            'node2_level': np.int8,
-            'user': np.str,
-            'item': np.str,
-            'rating': np.int32
-        },
-        nrows=1_000_000,
-        engine='c'
-    )[['user', 'item', 'rating']]
-
-    tags = pd.read_csv(
-        dataset_folder.joinpath('msd_tags.txt'),
-        sep=' ',
-        names=['node1_level', 'item', 'node2_level', 'tag', 'tag_weight'],
-        dtype={
-            'node1_level': np.int8,
-            'node2_level': np.int8,
-            'item': np.str,
-            'tag': np.str,
-            'weight': np.int32
-        },
-        engine='c'
-    )[['item', 'tag', 'tag_weight']]
+def split_dataset(ratings, test_fraction=.1):
+    """Split a dataset in train/test data"""
 
     # There are many ways to separate a dataset in (train, test) data, here are two:
     #   - Row separation: the test set will contain users that the model knows.
@@ -71,15 +41,11 @@ def import_and_split(folder, test_fraction=.1):
     #     predict new users behaviours considering the behaviour of other
     #     known users.
     # see [lkpy documentation](https://lkpy.readthedocs.io/en/stable/crossfold.html)
-    if test_fraction > 0:
-        train, test = xf.sample_rows(
-            ratings[['user', 'item', 'rating']], 
-            None,
-            int(test_fraction * len(ratings))
-        )
-    else:
-        train = ratings[['user', 'item', 'rating']]
-        test = pd.DataFrame(columns=['user', 'item', 'rating'])
+    train, test = xf.sample_rows(
+        ratings[['user', 'item', 'rating']], 
+        None,
+        int(test_fraction * len(ratings))
+    )
 
     return train, test
 
@@ -134,19 +100,10 @@ def train_model(
     return model, metrics
     
 
-def generate_recommendations(model, train, test, n_recommendations=50, mode='all'):
-    """Generate recommendations for a given model
-    
-    :param mode: 'all' or 'test'. Generate recommendations for all users
-        in dataset or just for users in test data
-    """
+def generate_recommendations(model, ratings, n_recommendations=50):
+    """Generate recommendations for a given model"""
 
-    if mode == 'all':
-        users = test.user.unique()
-    elif mode == 'test':
-        users = pd.concat([train, test]).user.unique()
-    else:
-        raise NotImplementedError(f'Recommendation mode {mode} is not implemented')
+    users = ratings.user.unique()
 
-    return batch.recommend(model, users, n_recommendations)
+    return batch.recommend(model, users[:1_000], n_recommendations)
 

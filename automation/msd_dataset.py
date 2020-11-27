@@ -1,6 +1,7 @@
 import json
 import pickle
 from pathlib import Path
+from functools import cached_property
 
 import luigi
 from luigi.format import Nop
@@ -10,8 +11,9 @@ import pandas as pd
 from matplotlib import pyplot as pl
 
 from recodiv.utils import dataset_info
+from recodiv.utils import generate_graph
 from recodiv.model import train_model
-from recodiv.model import import_and_split
+from recodiv.model import split_dataset
 from recodiv.model import generate_recommendations
 from recodiv.triversity.graph import IndividualHerfindahlDiversities
 
@@ -19,33 +21,125 @@ from recodiv.triversity.graph import IndividualHerfindahlDiversities
 # Path to generated folder
 GENERATED = Path('generated/')
 
+
+################################################################################
+# DATASETS DECLARATION                                                         #
+################################################################################
+class Dataset():
+    """Representation of a dataset
+
+    All dataset classes must have the following properties: 
+        - user_item : The users -> items links as a pd.DataFrame(columns=['user', 'item', 'rating']).to_csv()
+        - item_tag : The items -> tags links as a pd.DataFrame(columns=['item', 'tag', 'weight']).to_csv()
+        - IMPORT_FOLDER : where to find the dataset folder
+        - NAME : the dataset name (must be unique among all the datasets)
+        - base_folder : the root folder of all the following experiments
+        - data_folder : the folder where the data will be imported
+    """
+
+    IMPORT_FOLDER: str
+    NAME: str
+    base_folder: Path
+    data_folder: Path
+    user_item: pd.DataFrame
+    item_tag: pd.DataFrame
+
+
+class MsdDataset(Dataset):
+    """The Million Songs Dataset class"""
+
+    IMPORT_FOLDER = 'data/million_songs_dataset/'
+    NAME = 'MSD'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.base_folder = GENERATED.joinpath(f'dataset-{self.NAME}')
+        self.data_folder = self.base_folder.joinpath('data/')
+
+        self.user_item = pd.read_csv(
+            Path(self.IMPORT_FOLDER).joinpath('msd_users.txt'),
+            sep=' ',
+            names=['node1_level', 'user', 'node2_level', 'item', 'rating'],
+            dtype={
+                'node1_level': np.int8,
+                'node2_level': np.int8,
+                'user': np.str,
+                'item': np.str,
+                'rating': np.int32
+            },
+            nrows=1_000_000,
+            engine='c'
+        )[['user', 'item', 'rating']]
+
+        self.item_tag = pd.read_csv(
+            Path(self.IMPORT_FOLDER).joinpath('msd_tags.txt'),
+            sep=' ',
+            names=['node1_level', 'item', 'node2_level', 'tag', 'weight'],
+            dtype={
+                'node1_level': np.int8,
+                'node2_level': np.int8,
+                'item': np.str,
+                'tag': np.str,
+                'weight': np.int32
+            },
+            engine='c'
+        )[['item', 'tag', 'weight']]
+
+    def __str__(self):
+        return self.NAME
+
 ################################################################################
 # DATASET ANALYSIS                                                             #
 ################################################################################
-class BuildDatasetGraph(luigi.Task):
-    """Build users-songs-tags graph"""
-    dataset_name = luigi.parameter.Parameter(
-        description='Name of the imported dataset'
-    )
-    dataset_folder = luigi.parameter.Parameter(
-        description='Path to the dataset folder'
+class ImportDataset(luigi.Task):
+    """Import a dataset from via its class (ex: MsdDataset)"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
     )
 
     def output(self):
-        dataset = GENERATED.joinpath(f'dataset-{self.dataset_name}')
+        return {
+            'user_item': luigi.local_target.LocalTarget(
+                self.dataset.data_folder.joinpath('user_item.csv')
+            ),
+            'item_tag': luigi.local_target.LocalTarget(
+                self.dataset.data_folder.joinpath('item_tag.csv')
+            )
+        }
 
+    def run(self):
+        for out in self.output().values():
+            out.makedirs()
+        
+        self.dataset.user_item.to_csv(self.output()['user_item'].path, index=False)
+        self.dataset.item_tag.to_csv(self.output()['item_tag'].path, index=False)
+        
+
+class BuildDatasetGraph(luigi.Task):
+    """Build users-songs-tags graph"""
+    
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    def requires(self):
+        return ImportDataset(dataset=self.dataset)
+
+    def output(self):
         return luigi.LocalTarget(
-            dataset.joinpath('graph.pk'),
+            self.dataset.data_folder.joinpath('graph.pk'),
             format=luigi.format.Nop
         )
 
     def run(self):
-        self.output().makedirs()        
-        graph = IndividualHerfindahlDiversities.from_folder(
-            self.dataset_folder,
-            n_sets=4,
-            n_entries=[0, 1_000_000]
-        )
+        self.output().makedirs()
+
+        user_item = pd.read_csv(self.input()['user_item'].path)
+        item_tag = pd.read_csv(self.input()['item_tag'].path)
+
+        graph = generate_graph(user_item, item_tag)
         graph.persist(self.output().path)
 
         del graph
@@ -54,22 +148,19 @@ class BuildDatasetGraph(luigi.Task):
 class DatasetInfo(luigi.Task):
     """Save information on dataset (number of links, users ...)"""
 
-    dataset_name = luigi.parameter.Parameter(
-        description='Name of the imported dataset'
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
     )
-    dataset_folder = luigi.parameter.Parameter(
-        description='Path to the dataset folder'
-    )
-
-    def output(self):
-        dataset = GENERATED.joinpath(f'dataset-{self.dataset_name}')
-        return luigi.LocalTarget(dataset.joinpath('info.json'))
 
     def requires(self):
         return BuildDatasetGraph(
-            dataset_name=self.dataset_name, dataset_folder=self.dataset_folder
+            dataset=self.dataset
         )
-        
+
+    def output(self):
+        return luigi.LocalTarget(
+            self.dataset.data_folder.joinpath('info.json')
+        )        
 
     def run(self):
         graph_file = self.input()
@@ -84,20 +175,18 @@ class DatasetInfo(luigi.Task):
 class ComputeUsersDiversities(luigi.Task):
     """Compute the diversity of the songs listened by users"""
 
-    dataset_name = luigi.parameter.Parameter(
-        description='Name of the imported dataset'
-    )
-    dataset_folder = luigi.parameter.Parameter(
-        description='Path to the dataset folder'
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
     )
 
     def output(self):
-        dataset = GENERATED.joinpath(f'dataset-{self.dataset_name}')
-        return luigi.LocalTarget(dataset.joinpath('users_diversities.csv'))
+        return luigi.LocalTarget(
+            self.dataset.data_folder.joinpath('users_diversities.csv')
+        )
 
     def requires(self):
         return BuildDatasetGraph(
-            dataset_name=self.dataset_name, dataset_folder=self.dataset_folder
+            dataset=self.dataset
         )
 
     def run(self):
@@ -118,21 +207,17 @@ class ComputeUsersDiversities(luigi.Task):
 class PlotUsersDiversitiesHistogram(luigi.Task):
     """Plot the histogram of user diversity"""
 
-    dataset_name = luigi.parameter.Parameter(
-        description='Name of the imported dataset'
-    )
-    dataset_folder = luigi.parameter.Parameter(
-        description='Path to the dataset folder'
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
     )
 
     def output(self):
-        dataset = GENERATED.joinpath(f'dataset-{self.dataset_name}')
-        figures = dataset.joinpath(f'figures')
+        figures = self.dataset.data_folder.joinpath(f'figures')
         return luigi.LocalTarget(figures.joinpath('user_diversity_histogram.png'))
 
     def requires(self):
         return ComputeUsersDiversities(
-            dataset_name=self.dataset_name, dataset_folder=self.dataset_folder
+            dataset=self.dataset
         )
     
     def run(self):
@@ -149,20 +234,18 @@ class PlotUsersDiversitiesHistogram(luigi.Task):
 class ComputeTagsDiversities(luigi.Task):
     """Compute the diversity of the songs listened by users"""
 
-    dataset_name = luigi.parameter.Parameter(
-        description='Name of the imported dataset'
-    )
-    dataset_folder = luigi.parameter.Parameter(
-        description='Path to the dataset folder'
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
     )
 
     def output(self):
-        dataset = GENERATED.joinpath(f'dataset-{self.dataset_name}')
-        return luigi.LocalTarget(dataset.joinpath('tags_diversities.csv'))
+        return luigi.LocalTarget(
+            self.dataset.data_folder.joinpath('tags_diversities.csv')
+        )
 
     def requires(self):
         return BuildDatasetGraph(
-            dataset_name=self.dataset_name, dataset_folder=self.dataset_folder
+            dataset=self.dataset
         )
 
     def run(self):
@@ -183,21 +266,17 @@ class ComputeTagsDiversities(luigi.Task):
 class PlotTagsDiversitiesHistogram(luigi.Task):
     """Plot the histogram of user diversity"""
 
-    dataset_name = luigi.parameter.Parameter(
-        description='Name of the imported dataset'
-    )
-    dataset_folder = luigi.parameter.Parameter(
-        description='Path to the dataset folder'
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
     )
 
     def output(self):
-        dataset = GENERATED.joinpath(f'dataset-{self.dataset_name}')
-        figures = dataset.joinpath(f'figures')
+        figures = self.dataset.data_folder.joinpath('figures')
         return luigi.LocalTarget(figures.joinpath('tag_diversity_histogram.png'))
 
     def requires(self):
         return ComputeTagsDiversities(
-            dataset_name=self.dataset_name, dataset_folder=self.dataset_folder
+            dataset=self.dataset
         )
     
     def run(self):
@@ -220,26 +299,24 @@ class PlotTagsDiversitiesHistogram(luigi.Task):
 class GenerateTrainTest(luigi.Task):
     """Import a dataset (with adequate format) and generate train/test data"""
 
-    name = luigi.parameter.Parameter(
-        description='Name of the imported dataset'
-    )
-    data_folder = luigi.parameter.Parameter(
-        description='Path to the dataset folder'
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
     )
     test_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
     )
 
-    def output(self):
-        dataset = GENERATED.joinpath(f'dataset-{self.name}/')
+    def requires(self):
+        return ImportDataset(dataset=self.dataset)
 
+    def output(self):
         return {
             'train': luigi.LocalTarget(
-                dataset.joinpath(f'train-{int((1 - self.test_fraction) * 100)}.parquet'), 
+                self.dataset.data_folder.joinpath(f'train-{int((1 - self.test_fraction) * 100)}.parquet'), 
                 format=Nop
             ),
             'test': luigi.LocalTarget(
-                dataset.joinpath(f'test-{int(self.test_fraction * 100)}.parquet'), 
+                self.dataset.data_folder.joinpath(f'test-{int(self.test_fraction * 100)}.parquet'), 
                 format=Nop
             )
         }
@@ -248,7 +325,8 @@ class GenerateTrainTest(luigi.Task):
         for out in self.output().values():
             out.makedirs()
 
-        train, test = import_and_split(self.data_folder, self.test_fraction)
+        user_item = pd.read_csv(self.input()['user_item'].path)
+        train, test = split_dataset(user_item, self.test_fraction)
 
         train.to_parquet(self.output()['train'].path)
         test.to_parquet(self.output()['test'].path)
@@ -257,11 +335,8 @@ class GenerateTrainTest(luigi.Task):
 class TrainModel(luigi.Task):
     """Train a given model and save it"""
     
-    dataset_name = luigi.parameter.Parameter(
-        description='Name of the imported dataset'
-    )
-    dataset_folder = luigi.parameter.Parameter(
-        description='Path to the dataset folder'
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
     )
 
     n_iterations = luigi.parameter.IntParameter(
@@ -288,8 +363,17 @@ class TrainModel(luigi.Task):
         default=50, description='Number of recommendation to generate for each user at each training iteration if evaluate_iterations==True'
     )
 
+    def requires(self):
+        return GenerateTrainTest(
+            dataset=self.dataset, 
+            test_fraction=self.test_fraction
+        )
+
     def output(self):
-        model = GENERATED.joinpath(f'model-{self.n_iterations}it-{self.n_factors}f-{str(self.regularization).replace(".", "_")}reg/')
+        model = self.dataset.base_folder.joinpath(
+            f'model-{self.n_iterations}it-{self.n_factors}f-{str(self.regularization).replace(".", "_")}reg/'
+        )
+        
         return {
             'model': luigi.LocalTarget(
                 model.joinpath('model.bpk')
@@ -298,13 +382,6 @@ class TrainModel(luigi.Task):
                 model.joinpath(f'training-metrics.parquet')
             )
         }
-
-    def requires(self):
-        return GenerateTrainTest(
-            name=self.dataset_name, 
-            data_folder=self.dataset_folder, 
-            test_fraction=self.test_fraction
-        )
     
     def run(self):
         for out in self.output().values():
@@ -331,11 +408,10 @@ class TrainModel(luigi.Task):
         
 
 class GenerateRecommendations(luigi.Task):
-    dataset_name = luigi.parameter.Parameter(
-        description='Name of the imported dataset'
-    )
-    dataset_folder = luigi.parameter.Parameter(
-        description='Path to the dataset folder'
+    """Generate recommendations for all users with a given model"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -358,14 +434,9 @@ class GenerateRecommendations(luigi.Task):
 
     def requires(self):
         return {
-            'data': GenerateTrainTest(
-                name=self.dataset_name, 
-                data_folder=self.dataset_folder, 
-                test_fraction=self.model_test_fraction
-            ),
+            'data': ImportDataset(dataset=self.dataset),
             'model': TrainModel(
-                dataset_name=self.dataset_name,
-                dataset_folder=self.dataset_folder,
+                dataset=self.dataset,
                 n_iterations=self.model_n_iterations, 
                 n_factors=self.model_n_factors, 
                 regularization=self.model_regularization,
@@ -378,23 +449,21 @@ class GenerateRecommendations(luigi.Task):
         model = Path(self.input()['model']['model'].path).parent
         
         return luigi.LocalTarget(
-            model.joinpath(f'recommendations-{self.n_recommendations}.parquet')
+            model.joinpath(f'recommendations-{self.n_recommendations}.csv')
         )
     
     def run(self):
         self.output().makedirs()
         
-        train = pd.read_parquet(self.input()['data']['train'].path)
-        test = pd.read_parquet(self.input()['data']['test'].path)
+        user_item = pd.read_csv(self.input()['data']['user_item'].path)
         model = binpickle.load(self.input()['model']['model'].path)
 
         generate_recommendations(
             model, 
-            train, 
-            test,
+            user_item,
             n_recommendations=self.n_recommendations,
-            mode='all'
-        ).to_parquet(self.output().path)
+        ).to_csv(self.output().path, index=False)
+
 
 ################################################################################
 # RECOMMENDATIONS ANALYSIS                                                     #
@@ -402,11 +471,8 @@ class GenerateRecommendations(luigi.Task):
 class BuildRecommendationGraph(luigi.Task):
     """Build the user-song-tag graph for the recommendations"""
 
-    dataset_name = luigi.parameter.Parameter(
-        description='Name of the imported dataset'
-    )
-    dataset_folder = luigi.parameter.Parameter(
-        description='Path to the dataset folder'
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -428,31 +494,14 @@ class BuildRecommendationGraph(luigi.Task):
     )
 
     def requires(self):
-        return {
-            'dataset': GenerateTrainTest(
-                name=self.dataset_name,
-                data_folder=self.dataset_folder,
-                test_fraction=0
-            ),
-            'model': TrainModel(
-                dataset_name=self.dataset_name,
-                dataset_folder=self.dataset_folder,
-                n_iterations=self.model_n_iterations, 
-                n_factors=self.model_n_factors, 
-                regularization=self.model_regularization,
-                test_fraction=self.model_test_fraction,
-                evaluate_iterations=False
-            ),
-            'recommendations': GenerateRecommendations(
-                dataset_name=self.dataset_name,
-                dataset_folder=self.dataset_folder,
-                model_n_iterations=self.model_n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_test_fraction=self.model_test_fraction,
-                n_recommendations=self.n_recommendations
-            )
-        }
+        return GenerateRecommendations(
+            dataset=self.dataset,
+            model_n_iterations=self.model_n_iterations,
+            model_n_factors=self.model_n_factors,
+            model_regularization=self.model_regularization,
+            model_test_fraction=self.model_test_fraction,
+            n_recommendations=self.n_recommendations
+        )
 
     def output(self):
         model = Path(self.input()['model']['model'].path).parent
@@ -465,12 +514,9 @@ class BuildRecommendationGraph(luigi.Task):
     def run(self):
         self.output().makedirs()
 
-        # graph = IndividualHerfindahlDiversities.from_folder(
-        #     self.dataset_folder,
-        #     n_sets=4,
-        #     n_entries=[0, 1_000_000]
-        # )
-        # graph.persist(self.output().path)
+        graph = generate_graph()
+        graph.persist(self.output().path)
+
         print('YAYAYAYAYAYAYAYYA')
 
 

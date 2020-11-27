@@ -1,23 +1,23 @@
 import luigi
 
-from automation.msd_dataset import TrainModel
-from automation.msd_dataset import DatasetInfo
-from automation.msd_dataset import BuildDatasetGraph
-from automation.msd_dataset import BuildRecommendationGraph
-from automation.msd_dataset import ComputeUsersDiversities
-from automation.msd_dataset import GenerateRecommendations
-from automation.msd_dataset import PlotUsersDiversitiesHistogram
-from automation.msd_dataset import PlotTagsDiversitiesHistogram
+from automation.msd_dataset import *
 
 
 def main():
+    msd_dataset = MsdDataset()
     luigi.build(
         [
-            GenerateRecommendations(dataset_name='msd', dataset_folder='data/million_songs_dataset'),
-            DatasetInfo(dataset_name='msd', dataset_folder='data/million_songs_dataset'),
-            PlotUsersDiversitiesHistogram(dataset_name='msd', dataset_folder='data/million_songs_dataset'),
-            PlotTagsDiversitiesHistogram(dataset_name='msd', dataset_folder='data/million_songs_dataset'),
-            BuildRecommendationGraph(dataset_name='msd', dataset_folder='data/million_songs_dataset')
+            ImportDataset(dataset=msd_dataset),
+            DatasetInfo(dataset=msd_dataset),
+            BuildDatasetGraph(dataset=msd_dataset),
+            ComputeUsersDiversities(dataset=msd_dataset),
+            PlotUsersDiversitiesHistogram(dataset=msd_dataset),
+            ComputeTagsDiversities(dataset=msd_dataset),
+            PlotTagsDiversitiesHistogram(dataset=msd_dataset),
+            GenerateTrainTest(dataset=msd_dataset),
+            TrainModel(dataset=msd_dataset),
+            GenerateRecommendations(dataset=msd_dataset)
+            # BuildRecommendationGraph(dataset_name='msd', dataset_folder='data/million_songs_dataset'),
         ],
         local_scheduler=True,
         log_level='INFO'

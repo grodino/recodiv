@@ -35,6 +35,19 @@ def print_song_info(songs_ids, graph, songs_info):
         print()
 
 
+def generate_graph(user_item, item_tag):
+    """Generate a graph from user -> item and item -> tag links"""
+
+    graph = IndividualHerfindahlDiversities(4)
+
+    for link in user_item.itertuples():
+        graph.add_link(0, link.user, 1, link.item, link.rating)
+
+    for link in item_tag.itertuples():
+        graph.add_link(1, link.item, 2, link.tag, link.weight)
+
+    return graph
+    
 def dataset_info(graph):
     """Returns information on the dataset (number of users, links ...)"""
 
