@@ -105,5 +105,5 @@ def generate_recommendations(model, ratings, n_recommendations=50):
 
     users = ratings.user.unique()
 
-    return batch.recommend(model, users[:1_000], n_recommendations)
+    return batch.recommend(model, users[:10_000], n_recommendations)
 

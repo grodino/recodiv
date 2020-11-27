@@ -40,6 +40,8 @@ def generate_graph(user_item, item_tag):
 
     graph = IndividualHerfindahlDiversities(4)
 
+    # TODO : use pd.Index.symmetric_difference to exclude songs not listenend or not tagged
+
     for link in user_item.itertuples():
         graph.add_link(0, link.user, 1, link.item, link.rating)
 
@@ -47,7 +49,8 @@ def generate_graph(user_item, item_tag):
         graph.add_link(1, link.item, 2, link.tag, link.weight)
 
     return graph
-    
+
+
 def dataset_info(graph):
     """Returns information on the dataset (number of users, links ...)"""
 

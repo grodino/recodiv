@@ -228,6 +228,7 @@ class PlotUsersDiversitiesHistogram(luigi.Task):
         pl.ylabel('User count')
         pl.title('Histogram of user diversity index')
         pl.savefig(self.output().path, format='png', dpi=300)
+        pl.close()
 
 
 class ComputeTagsDiversities(luigi.Task):
@@ -291,6 +292,8 @@ class PlotTagsDiversitiesHistogram(luigi.Task):
         pl.ylabel('Tag count')
         pl.title('Histogram of tag diversity index')
         pl.savefig(self.output().path, format='png', dpi=300)
+        pl.close()
+
 
 ################################################################################
 # MODEL TRAINING/EVALUATION                                                    #
@@ -495,6 +498,14 @@ class BuildRecommendationGraph(luigi.Task):
     def requires(self):
         return {
             'dataset': ImportDataset(dataset=self.dataset),
+            'model': TrainModel(
+                dataset=self.dataset,
+                n_iterations=self.model_n_iterations,
+                n_factors=self.model_n_factors,
+                regularization=self.model_regularization,
+                test_fraction=self.model_test_fraction,
+                evaluate_iterations=False
+            ),
             'recommendations': GenerateRecommendations(
                 dataset=self.dataset,
                 model_n_iterations=self.model_n_iterations,
@@ -516,13 +527,127 @@ class BuildRecommendationGraph(luigi.Task):
     def run(self):
         self.output().makedirs()
 
-        item_tag = self.input()['dataset']['item_tag']
+        item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
 
-        graph = generate_graph()
+        user_item = recommendations[['user', 'item', 'rank']]
+        user_item['rating'] = 1 / user_item['rank']
+
+        graph = generate_graph(user_item,item_tag)
         graph.persist(self.output().path)
 
-        print('YAYAYAYAYAYAYAYYA')
+        del graph
+
+
+class ComputeRecommendationUsersDiversities(luigi.Task):
+    """Compute the diversity of the songs recommended to users"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    # TODO: also implement crossfold techniques
+    model_test_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return BuildRecommendationGraph(
+            dataset=self.dataset,
+            model_n_iterations=self.model_n_iterations,
+            model_n_factors=self.model_n_factors,
+            model_regularization=self.model_regularization,
+            model_test_fraction=self.model_test_fraction,
+            n_recommendations=self.n_recommendations
+        )
+
+    def output(self):
+        model = Path(self.input().path).parent
+        return luigi.LocalTarget(
+            model.joinpath(f'recommendations-{self.n_recommendations}-users_diversities.csv')
+        )
+
+    def run(self):
+        graph = IndividualHerfindahlDiversities.recall(self.input().path)
+
+        graph.normalise_all()
+        diversities = graph.diversities((0, 1, 2))
+
+        pd.DataFrame({
+            'user': list(diversities.keys()), 
+            'diversity': list(diversities.values())
+        }).to_csv(self.output().path, index=False)
+
+        del graph
+
+
+class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
+    """Plot the histogram of recommendations diversity for each user"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    # TODO: also implement crossfold techniques
+    model_test_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return ComputeRecommendationUsersDiversities(
+            dataset=self.dataset,
+            model_n_iterations=self.model_n_iterations,
+            model_n_factors=self.model_n_factors,
+            model_regularization=self.model_regularization,
+            model_test_fraction=self.model_test_fraction,
+            n_recommendations=self.n_recommendations
+        )
+    
+    def output(self):
+        figures = Path(self.input().path).parent.joinpath('figures')
+        return luigi.LocalTarget(figures.joinpath('recommendation_user_diversity_histogram.png'))
+
+    
+    def run(self):
+        self.output().makedirs()
+        diversities = pd.read_csv(self.input().path)
+
+        pl.hist(diversities['diversity'].where(lambda x: x < 1_000_000), bins=100)
+        pl.xlabel('Diversity index')
+        pl.ylabel('User count')
+        pl.title('Histogram of recommendations diversity index')
+        pl.savefig(self.output().path, format='png', dpi=300)
+        pl.close()
+
+
+# TODO: create a CollectFiguresTask depending on all figures tasks that moves
+# all the resulting figures to a single folder
 
 
 class PlotDiversityIncrease(luigi.Task):
