@@ -29,7 +29,7 @@ METRICS = {
 }
 
 
-def import_and_split(folder):
+def import_and_split(folder, test_fraction=.1):
     """Import a dataset and split it in train/test data"""
     dataset_folder = Path(folder)
 
@@ -71,11 +71,15 @@ def import_and_split(folder):
     #     predict new users behaviours considering the behaviour of other
     #     known users.
     # see [lkpy documentation](https://lkpy.readthedocs.io/en/stable/crossfold.html)
-    train, test = xf.sample_rows(
-        ratings[['user', 'item', 'rating']], 
-        None,
-        1_000
-    )
+    if test_fraction > 0:
+        train, test = xf.sample_rows(
+            ratings[['user', 'item', 'rating']], 
+            None,
+            int(test_fraction * len(ratings))
+        )
+    else:
+        train = ratings[['user', 'item', 'rating']]
+        test = pd.DataFrame(columns=['user', 'item', 'rating'])
 
     return train, test
 
