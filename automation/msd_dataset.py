@@ -1,7 +1,6 @@
 import json
 import pickle
 from pathlib import Path
-from functools import cached_property
 
 import luigi
 from luigi.format import Nop
@@ -494,14 +493,17 @@ class BuildRecommendationGraph(luigi.Task):
     )
 
     def requires(self):
-        return GenerateRecommendations(
-            dataset=self.dataset,
-            model_n_iterations=self.model_n_iterations,
-            model_n_factors=self.model_n_factors,
-            model_regularization=self.model_regularization,
-            model_test_fraction=self.model_test_fraction,
-            n_recommendations=self.n_recommendations
-        )
+        return {
+            'dataset': ImportDataset(dataset=self.dataset),
+            'recommendations': GenerateRecommendations(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_test_fraction=self.model_test_fraction,
+                n_recommendations=self.n_recommendations
+            ),
+        }
 
     def output(self):
         model = Path(self.input()['model']['model'].path).parent
@@ -513,6 +515,9 @@ class BuildRecommendationGraph(luigi.Task):
 
     def run(self):
         self.output().makedirs()
+
+        item_tag = self.input()['dataset']['item_tag']
+        recommendations = pd.read_csv(self.input()['recommendations'].path)
 
         graph = generate_graph()
         graph.persist(self.output().path)
