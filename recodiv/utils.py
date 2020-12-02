@@ -35,10 +35,11 @@ def print_song_info(songs_ids, graph, songs_info):
         print()
 
 
-def generate_graph(user_item, item_tag):
+def generate_graph(user_item, item_tag, graph=None):
     """Generate a graph from user -> item and item -> tag links"""
 
-    graph = IndividualHerfindahlDiversities(4)
+    if graph is None:
+        graph = IndividualHerfindahlDiversities(4)
 
     # TODO : use pd.Index.symmetric_difference to exclude songs not listenend or not tagged
 
