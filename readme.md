@@ -43,6 +43,15 @@ Here, diversity is clearely stated as diversity of audience for tags and diversi
 An index is computed overs an emprirical distribution; this is something biologist do a lot : [Rényi Entropy](https://en.wikipedia.org/wiki/R%C3%A9nyi_entropy), [a bio article](http://www.cambridge.org/core/journals/journal-of-tropical-ecology/article/new-local-estimator-of-regional-species-diversity-in-terms-of-shadow-species-with-a-case-study-from-sumatra/3862C02AFFBD2954004A9BB0A827A7E5)
  
 
+### TODO
+- Plot model perfomance indicators along diversity
+- Diversity vs model parameters
+- Diversity vs model performance
+- Diversity vs recommendation depth (# of recommendations)
+- In the selection phase, select items that would increase the number of tags reached and items that
+  would balance all the categories reached
+
+
 ## Licences
 * The code in `recodiv/triversity/` is adapted from [triversity](https://github.com/Nobody35/triversity)
 (mainly comments and formating modifications)
