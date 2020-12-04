@@ -14,6 +14,7 @@ from recodiv.utils import dataset_info
 from recodiv.utils import generate_graph
 from recodiv.model import train_model
 from recodiv.model import split_dataset
+from recodiv.model import evaluate_model
 from recodiv.model import generate_recommendations
 from recodiv.triversity.graph import IndividualHerfindahlDiversities
 
@@ -51,13 +52,27 @@ class MsdDataset(Dataset):
     IMPORT_FOLDER = 'data/million_songs_dataset/'
     NAME = 'MSD'
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, n_users=0,  **kwargs):
         super().__init__(*args, **kwargs)
 
         self.base_folder = GENERATED.joinpath(f'dataset-{self.NAME}')
         self.data_folder = self.base_folder.joinpath('data/')
+        self.n_users = int(n_users)
 
-        self.user_item = pd.read_csv(
+        self.user_item = None
+        self.item_tag = None
+    
+    def import_data(self):
+        """Randomly select self.n_users (all if n_users == 0) and import all
+           their listenings
+
+        Only listened songs are imported, only tags that are related to listened
+        songs are imported
+        """
+
+        print('INFO Importing dataset')
+
+        user_item = pd.read_csv(
             Path(self.IMPORT_FOLDER).joinpath('msd_users.txt'),
             sep=' ',
             names=['node1_level', 'user', 'node2_level', 'item', 'rating'],
@@ -68,11 +83,11 @@ class MsdDataset(Dataset):
                 'item': np.str,
                 'rating': np.int32
             },
-            nrows=1_000_000,
+            # nrows=1_000_000,
             engine='c'
         )[['user', 'item', 'rating']]
 
-        self.item_tag = pd.read_csv(
+        item_tag = pd.read_csv(
             Path(self.IMPORT_FOLDER).joinpath('msd_tags.txt'),
             sep=' ',
             names=['node1_level', 'item', 'node2_level', 'tag', 'weight'],
@@ -85,6 +100,24 @@ class MsdDataset(Dataset):
             },
             engine='c'
         )[['item', 'tag', 'weight']]
+
+        # Select a portion of the dataset
+        if self.n_users > 0:
+            rng = np.random.default_rng()
+
+            users = user_item['user'].unique()
+            selected_users = rng.choice(users, self.n_users, replace=False)
+
+            user_item.set_index('user', inplace=True)
+            user_item = user_item.loc[selected_users]
+            user_item.reset_index(inplace=True)
+
+        # Only keep songs that are listened to
+        item_tag.set_index('item', inplace=True)
+        item_tag = item_tag.loc[user_item['item']].reset_index().drop_duplicates()
+
+        self.user_item = user_item
+        self.item_tag = item_tag
 
     def __str__(self):
         return self.NAME
@@ -113,6 +146,8 @@ class ImportDataset(luigi.Task):
         for out in self.output().values():
             out.makedirs()
         
+        self.dataset.import_data()
+
         self.dataset.user_item.to_csv(self.output()['user_item'].path, index=False)
         self.dataset.item_tag.to_csv(self.output()['item_tag'].path, index=False)
         
@@ -466,6 +501,71 @@ class GenerateRecommendations(luigi.Task):
             user_item,
             n_recommendations=self.n_recommendations,
         ).to_csv(self.output().path, index=False)
+
+
+class EvaluateModel(luigi.Task):
+    """Compute evaluations metrics on a trained model"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    # TODO: also implement crossfold techniques
+    model_test_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return {
+            'recommendations': GenerateRecommendations(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_test_fraction=self.model_test_fraction,
+                n_recommendations=self.n_recommendations
+            ),
+            'dataset': GenerateTrainTest(
+                dataset=self.dataset,
+                test_fraction=self.model_test_fraction
+            ),
+            'model': TrainModel(
+                dataset=self.dataset,
+                n_iterations=self.model_n_iterations,
+                n_factors=self.model_n_factors,
+                regularization=self.model_regularization,
+                test_fraction=self.model_test_fraction,
+                n_recommendations=self.n_recommendations
+            )
+        }
+    
+    def output(self):
+        model = Path(self.input()['recommendations'].path).parent
+        
+        return luigi.LocalTarget(
+            model.joinpath(f'{self.n_recommendations}-recommendations_model_eval.json'),
+            format=Nop
+        )
+    
+    def run(self):
+        recommendations = pd.read_csv(self.input()['recommendations'].path)
+        model = binpickle.load(self.input()['model']['model'].path)
+        test = pd.read_parquet(self.input()['dataset']['test'].path)
+
+        print(evaluate_model(recommendations, test, model=model))
 
 
 ################################################################################
