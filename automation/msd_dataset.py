@@ -541,14 +541,6 @@ class EvaluateModel(luigi.Task):
             'dataset': GenerateTrainTest(
                 dataset=self.dataset,
                 test_fraction=self.model_test_fraction
-            ),
-            'model': TrainModel(
-                dataset=self.dataset,
-                n_iterations=self.model_n_iterations,
-                n_factors=self.model_n_factors,
-                regularization=self.model_regularization,
-                test_fraction=self.model_test_fraction,
-                n_recommendations=self.n_recommendations
             )
         }
     
@@ -561,11 +553,37 @@ class EvaluateModel(luigi.Task):
         )
     
     def run(self):
+        self.output().makedirs()
+
         recommendations = pd.read_csv(self.input()['recommendations'].path)
-        model = binpickle.load(self.input()['model']['model'].path)
         test = pd.read_parquet(self.input()['dataset']['test'].path)
 
-        print(evaluate_model(recommendations, test, model=model))
+        # NOTE : Issue appears when the two following conditions are met :
+        #   - the train test is split by data row (ie by removings all
+        #     listenings of a song by a particular user)
+        #   - a user had only one listening and it is put in the test set
+        #
+        # Then, the model will not know the user, thus will not be able to
+        # recommend songs to this user. Therefore, to avoid issues, we simply
+        # discard users with no recommendations from the test set
+        recommendations.set_index('user', inplace=True)
+        test.set_index('user', inplace=True)
+        
+        missing = test.index.difference(recommendations.index)
+        common = test.index.intersection(recommendations.index).unique()
+        print(f'In test set but not recommended : {missing}')
+
+        recommendations = recommendations.loc[common].reset_index()
+        test.reset_index(inplace=True)
+
+        metrics_names = ['ndcg', 'precision']
+        metrics = evaluate_model(recommendations, test, metrics_names)
+
+        metrics[metrics_names].mean().to_json(
+            self.output().path,
+            orient='index',
+            indent=4
+        )
 
 
 ################################################################################
@@ -734,7 +752,12 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
 
         mean = diversities['diversity'].mean()
 
-        pl.hist(diversities['diversity'].where(lambda x: x < 1_000_000), bins=100)
+        pl.hist(
+            diversities['diversity'].where(
+                lambda x: x < diversities['diversity'].quantile(.99)
+            ),
+            bins=100
+        )
         pl.axvline(mean, ls='--', color='pink')
         pl.text(mean + 1, 2, f'mean: {mean:.02f}', color='pink')
         pl.xlabel('Diversity index')
@@ -928,7 +951,14 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         )
         mean = deltas['diversity'].mean()
 
-        pl.hist(deltas['diversity'].where(lambda x: x < 1_000_000), bins=100)
+        pl.hist(
+            deltas['diversity'].where(
+                lambda x: deltas['diversity'].quantile(.05) <  x
+            ).where(
+                lambda x: x < deltas['diversity'].quantile(.99)
+            ), 
+            bins=100
+        )
         pl.axvline(mean, ls='--', color='pink')
         pl.text(mean + 1, 2, f'mean: {mean:.02f}', color='pink')
         pl.xlabel('Diversity index')
@@ -971,7 +1001,15 @@ class PlotDiversityVsLatentFactors(luigi.Task):
         tasks = {}
 
         for n_factors in self.n_factors_values:
-            tasks[n_factors] = ComputeRecommendationUsersDiversities(
+            tasks[(n_factors, 'diversities')] = ComputeRecommendationUsersDiversities(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=self.model_regularization,
+                model_test_fraction=self.model_test_fraction,
+                n_recommendations=self.n_recommendations
+            )
+            tasks[(n_factors, 'metrics')] = EvaluateModel(
                 dataset=self.dataset,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=n_factors,
@@ -989,19 +1027,49 @@ class PlotDiversityVsLatentFactors(luigi.Task):
         ))
 
     def run(self):
+        self.output().makedirs()
+
         mean_diversities = []
+        metrics = pd.DataFrame()
         factors = []
 
-        for n_factors, diversities_file in self.input().items():
-            diversities = pd.read_csv(diversities_file.path)
+        for key, value in self.input().items():
+            if key[1] == 'diversities':
+                diversities = pd.read_csv(value.path)
 
-            factors.append(n_factors)
-            mean_diversities.append(diversities['diversity'].mean())
+                factors.append(key[0])
+                mean_diversities.append(diversities['diversity'].mean())
+            
+            elif key[1] == 'metrics':
+                metric = pd.read_json(value.path, orient='index').transpose()
+                metric['n_factors'] = key[0]
+                metrics = pd.concat((metrics, metric))
+        
+        metrics.set_index('n_factors', inplace=True)
+        metrics = metrics - metrics.loc[metrics.index[0]]
 
-        pl.plot(factors, mean_diversities)
-        pl.xlabel('number of factors')
-        pl.ylabel('mean diversity')
+        fig, ax1 = pl.subplots()        
+
+        # Add plots
+        div_line = ax1.plot(factors, mean_diversities, color='green', label='diversity')
+        ax1.set_xlabel('number of factors')
+        ax1.set_ylabel('mean diversity')
+
+        ax2 = ax1.twinx()
+        ax2.set_ylabel('metrics')
+        metrics_lines = metrics.plot(ax=ax2, legend=False, logy=True).get_lines()
+        
+        # Obscure trick to have only one legend
+        lines = [*div_line, ]
+
+        for line in metrics_lines:
+            lines.append(line)
+
+        labels = ['diversity', ] + list(metrics.columns)
+        ax1.legend(lines, labels, loc='center right')
+
         pl.title('User diversity of recommendations')
+        fig.tight_layout()
         pl.savefig(self.output().path, format='png', dpi=300)
         pl.close()
 
@@ -1054,6 +1122,8 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
         ))
 
     def run(self):
+        self.output().makedirs()
+        
         mean_deltas = []
         factors = []
 
@@ -1074,7 +1144,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
 ################################################################################
 # UTILS                                                                        #
 ################################################################################
-class CollectFigures(luigi.Task):
+class CollectAllModelFigures(luigi.Task):
     """Collect all figures related to a dataset in a single folder"""
 
     dataset: Dataset = luigi.parameter.Parameter(
@@ -1092,3 +1162,20 @@ class CollectFigures(luigi.Task):
                 f'{figure.parent.parts[-2]}-{figure.name}'
             )
             shutil.copy(figure, destination)
+
+
+class DeleteAllModelFigures(luigi.Task):
+    """Delete all figures in models folders"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    ) 
+
+    priority = 4
+
+    def run(self):
+        figures = self.dataset.base_folder.joinpath('figures')
+        figures.mkdir(exist_ok=True)
+
+        for figure in self.dataset.base_folder.glob('**/model-*/figures/*'):
+            figure.unlink()

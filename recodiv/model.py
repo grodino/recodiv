@@ -105,5 +105,22 @@ def generate_recommendations(model, ratings, n_recommendations=50):
 
     users = ratings.user.unique()
 
-    return batch.recommend(model, users[:10_000], n_recommendations)
+    return batch.recommend(model, users, n_recommendations, n_jobs=4)
 
+
+def evaluate_model(recommendations, test, metrics):
+    """Evaluates a model via its recommendations
+    
+    :param recommendations: pd.DataFrame with at least the following columns :  
+        'user', 'item', 'score', 'rank'
+    :param test: pd.DataFrame. The testing data
+    """
+
+    analysis = topn.RecListAnalysis(n_jobs=4)
+    users = test.user.unique()
+    rec_users = recommendations['user'].unique()
+
+    for metric_name in metrics:
+        analysis.add_metric(METRICS[metric_name])
+
+    return analysis.compute(recommendations, test)
