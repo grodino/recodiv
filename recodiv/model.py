@@ -119,7 +119,7 @@ def evaluate_model(recommendations, test, metrics):
     analysis = topn.RecListAnalysis(n_jobs=4)
     users = test.user.unique()
     rec_users = recommendations['user'].unique()
-
+    
     for metric_name in metrics:
         analysis.add_metric(METRICS[metric_name])
 

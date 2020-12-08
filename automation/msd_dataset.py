@@ -364,11 +364,11 @@ class GenerateTrainTest(luigi.Task):
     def output(self):
         return {
             'train': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(f'train-{int((1 - self.test_fraction) * 100)}.parquet'), 
+                self.dataset.data_folder.joinpath(f'train-{int((1 - self.test_fraction) * 100)}.csv'), 
                 format=Nop
             ),
             'test': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(f'test-{int(self.test_fraction * 100)}.parquet'), 
+                self.dataset.data_folder.joinpath(f'test-{int(self.test_fraction * 100)}.csv'), 
                 format=Nop
             )
         }
@@ -380,8 +380,49 @@ class GenerateTrainTest(luigi.Task):
         user_item = pd.read_csv(self.input()['user_item'].path)
         train, test = split_dataset(user_item, self.test_fraction)
 
-        train.to_parquet(self.output()['train'].path)
-        test.to_parquet(self.output()['test'].path)
+        train.to_csv(self.output()['train'].path, index=False)
+        test.to_csv(self.output()['test'].path, index=False)
+
+
+class TrainTestInfo(luigi.Task):
+    """Compute information about the training and testings datasets (n_users ...)"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+    test_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    )
+
+    def requires(self):
+        return GenerateTrainTest(
+            dataset=self.dataset,
+            test_fraction=self.test_fraction
+        )
+    
+    def output(self):
+        return luigi.LocalTarget(
+            self.dataset.data_folder.joinpath('train_test_info.json')
+        )
+
+    def run(self):
+        train = pd.read_csv(self.input()['train'].path)
+        test = pd.read_csv(self.input()['test'].path)
+        info = {}
+
+        info['train'] = {
+            'n_users': len(train['user'].unique()),
+            'n_items': len(train['item'].unique()),
+            'n_user_item_links': len(train)
+        }
+        info['test'] = {
+            'n_users': len(test['user'].unique()),
+            'n_items': len(test['item'].unique()),
+            'n_user_item_links': len(test)
+        }
+
+        with self.output().open('w') as file:
+            json.dump(info, file, indent=4)
 
 
 class TrainModel(luigi.Task):
@@ -441,8 +482,8 @@ class TrainModel(luigi.Task):
 
         train_file, test_file = self.input()
 
-        train = pd.read_parquet(self.input()['train'].path)
-        test = pd.read_parquet(self.input()['test'].path)
+        train = pd.read_csv(self.input()['train'].path)
+        test = pd.read_csv(self.input()['test'].path)
 
         model, metrics = train_model(
             train, 
@@ -570,7 +611,7 @@ class EvaluateModel(luigi.Task):
         self.output().makedirs()
 
         recommendations = pd.read_csv(self.input()['recommendations'].path)
-        test = pd.read_parquet(self.input()['dataset']['test'].path)
+        test = pd.read_csv(self.input()['dataset']['test'].path)
 
         # NOTE : Issue appears when the two following conditions are met :
         #   - the train test is split by data row (ie by removings all
