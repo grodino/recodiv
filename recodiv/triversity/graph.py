@@ -13,6 +13,7 @@ from time import perf_counter
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from recodiv.triversity.utils import normalise
 from recodiv.triversity.utils import add_default
@@ -392,11 +393,9 @@ class NPartiteGraph:
             if node in self.graphs[origin_set][destination_set].keys():
                 for neighbor, weight in self.graphs[origin_set][destination_set][node].items():
                     add_default(distribution, neighbor, probability*weight)
-            
             else:
                 # print(f'WARNING node {node} not in links ({origin_set} -> {destination_set})')
                 pass
-                
         
         return distribution
         
@@ -426,7 +425,7 @@ class NPartiteGraph:
 
         return distribution
             
-    def spread_and_divs(self, path):
+    def spread_and_divs(self, path, progress=True):
         """Spread and compute the diversity via the specified functions (
         _div_init, _div_add, _div_return)
 
@@ -434,6 +433,7 @@ class NPartiteGraph:
         one time and not for every nodes.
 
         :param path: the ids of the sets ("layers") to be traversed (in given order) by the spread.
+        :param progress: show the progress via tqdm
         """
         
         if path in self.res:
@@ -442,13 +442,13 @@ class NPartiteGraph:
 
         self._div_init(self.last_id[path[0]], self.last_id[path[-1]])
 
-        for node, neighbors in self.graphs[path[0]][path[1]].items():            
+        for node, neighbors in tqdm(self.graphs[path[0]][path[1]].items(), disable=not(progress)):            
             distribution = self._spread_path(neighbors, path[1:])
             self._div_add(node, distribution)
         
         res = self._div_return()
         self.res[path] = res
-        
+
         return res
 
     def id_to_hash(self, ids, set_id):
@@ -531,7 +531,7 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
         
         return diversities
 
-    def diversities(self, path):
+    def diversities(self, path, progress=True):
         """Compute the Herfindal diversity of each node in the first set
         traversed by the path.
 
@@ -541,6 +541,6 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
         :returns: a dict such that result[node_id] = diversity value
         """
 
-        result = self.spread_and_divs(path)
+        result = self.spread_and_divs(path, progress=progress)
 
         return result

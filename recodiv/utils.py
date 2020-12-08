@@ -43,10 +43,10 @@ def generate_graph(user_item, item_tag, graph=None):
     if graph is None:
         graph = IndividualHerfindahlDiversities(4)
 
-    for link in tqdm(user_item.itertuples(), desc="user->item"):
+    for link in tqdm(user_item.itertuples(), desc="user->item", total=len(user_item)):
         graph.add_link(0, link.user, 1, link.item, link.rating)
 
-    for link in tqdm(item_tag.itertuples(), desc="item->tag"):
+    for link in tqdm(item_tag.itertuples(), desc="item->tag", total=len(item_tag)):
         graph.add_link(1, link.item, 2, link.tag, link.weight)
 
     return graph
