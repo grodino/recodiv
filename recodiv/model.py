@@ -29,8 +29,10 @@ METRICS = {
 }
 
 
-def split_dataset(ratings, test_fraction=.1):
+def split_dataset(ratings, user_fraction=.1):
     """Split a dataset in train/test data"""
+
+    n_users = len(ratings['user'].unique())
 
     # There are many ways to separate a dataset in (train, test) data, here are two:
     #   - Row separation: the test set will contain users that the model knows.
@@ -41,13 +43,19 @@ def split_dataset(ratings, test_fraction=.1):
     #     predict new users behaviours considering the behaviour of other
     #     known users.
     # see [lkpy documentation](https://lkpy.readthedocs.io/en/stable/crossfold.html)
-    train, test = xf.sample_rows(
+    # Here the sampling is as follow:
+    #   - Sample test_fraction * n_total users
+    #   - Randomly select half of their listenings for the test set
+    result = list(xf.sample_users(
         ratings[['user', 'item', 'rating']], 
-        None,
-        int(test_fraction * len(ratings))
-    )
+        partitions=1,
+        size=int(n_users * user_fraction),
+        method=xf.SampleFrac(.5)
+    ))[0]
 
-    return train, test
+    print(f'n test users: {len(result.test["user"].unique())}')
+
+    return result.train, result.test
 
 
 def train_model(
@@ -105,7 +113,7 @@ def generate_recommendations(model, ratings, n_recommendations=50):
 
     users = ratings.user.unique()
 
-    return batch.recommend(model, users, n_recommendations, n_jobs=4)
+    return batch.recommend(model, users, n_recommendations)
 
 
 def evaluate_model(recommendations, test, metrics):
@@ -119,7 +127,7 @@ def evaluate_model(recommendations, test, metrics):
     analysis = topn.RecListAnalysis(n_jobs=4)
     users = test.user.unique()
     rec_users = recommendations['user'].unique()
-    
+
     for metric_name in metrics:
         analysis.add_metric(METRICS[metric_name])
 

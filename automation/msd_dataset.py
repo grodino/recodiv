@@ -119,11 +119,11 @@ class MsdDataset(Dataset):
             user_item = user_item.loc[selected_users]
             user_item.reset_index(inplace=True)
 
-        # Only keep songs that are listened to
-        # Too slow when importing the whole dataset
-        # logger.debug(f'Removing songs not listened to')
-        # item_tag.set_index('item', inplace=True)
-        # item_tag = item_tag.loc[user_item['item']].reset_index().drop_duplicates()
+            # Only keep songs that are listened to
+            # Too slow when importing the whole dataset
+            logger.debug(f'Removing songs not listened to')
+            item_tag.set_index('item', inplace=True)
+            item_tag = item_tag.loc[user_item['item']].reset_index().drop_duplicates()
 
         logger.debug(f'Finished importing dataset in {time.perf_counter() - t}')
 
@@ -219,6 +219,9 @@ class DatasetInfo(luigi.Task):
             json.dump(dataset_info(graph), file, indent=4)
 
         del graph
+
+
+# TODO : compute and plot user volume histogram
 
 
 class ComputeUsersDiversities(luigi.Task):
@@ -354,8 +357,8 @@ class GenerateTrainTest(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     def requires(self):
@@ -364,11 +367,11 @@ class GenerateTrainTest(luigi.Task):
     def output(self):
         return {
             'train': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(f'train-{int((1 - self.test_fraction) * 100)}.csv'), 
+                self.dataset.data_folder.joinpath(f'train-{int((1 - self.user_fraction) * 100)}.csv'), 
                 format=Nop
             ),
             'test': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(f'test-{int(self.test_fraction * 100)}.csv'), 
+                self.dataset.data_folder.joinpath(f'test-{int(self.user_fraction * 100)}.csv'), 
                 format=Nop
             )
         }
@@ -378,7 +381,7 @@ class GenerateTrainTest(luigi.Task):
             out.makedirs()
 
         user_item = pd.read_csv(self.input()['user_item'].path)
-        train, test = split_dataset(user_item, self.test_fraction)
+        train, test = split_dataset(user_item, self.user_fraction)
 
         train.to_csv(self.output()['train'].path, index=False)
         test.to_csv(self.output()['test'].path, index=False)
@@ -390,14 +393,14 @@ class TrainTestInfo(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     def requires(self):
         return GenerateTrainTest(
             dataset=self.dataset,
-            test_fraction=self.test_fraction
+            user_fraction=self.user_fraction
         )
     
     def output(self):
@@ -442,8 +445,8 @@ class TrainModel(luigi.Task):
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
     # TODO: also implement crossfold techniques
-    test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     evaluate_iterations = luigi.parameter.BoolParameter(
@@ -459,7 +462,7 @@ class TrainModel(luigi.Task):
     def requires(self):
         return GenerateTrainTest(
             dataset=self.dataset, 
-            test_fraction=self.test_fraction
+            user_fraction=self.user_fraction
         )
 
     def output(self):
@@ -501,7 +504,7 @@ class TrainModel(luigi.Task):
         
 
 class GenerateRecommendations(luigi.Task):
-    """Generate recommendations for all users with a given model"""
+    """Generate recommendations for users in test dataset with a given model"""
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
@@ -517,8 +520,8 @@ class GenerateRecommendations(luigi.Task):
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
     # TODO: also implement crossfold techniques
-    model_test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -527,13 +530,16 @@ class GenerateRecommendations(luigi.Task):
 
     def requires(self):
         return {
-            'data': ImportDataset(dataset=self.dataset),
+            'data': GenerateTrainTest(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction
+            ),
             'model': TrainModel(
                 dataset=self.dataset,
                 n_iterations=self.model_n_iterations, 
                 n_factors=self.model_n_factors, 
                 regularization=self.model_regularization,
-                test_fraction=self.model_test_fraction,
+                user_fraction=self.model_user_fraction,
                 evaluate_iterations=False
             )
         }
@@ -548,7 +554,7 @@ class GenerateRecommendations(luigi.Task):
     def run(self):
         self.output().makedirs()
         
-        user_item = pd.read_csv(self.input()['data']['user_item'].path)
+        user_item = pd.read_csv(self.input()['data']['test'].path)
         model = binpickle.load(self.input()['model']['model'].path)
 
         generate_recommendations(
@@ -575,8 +581,8 @@ class EvaluateModel(luigi.Task):
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
     # TODO: also implement crossfold techniques
-    model_test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -590,12 +596,12 @@ class EvaluateModel(luigi.Task):
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
-                model_test_fraction=self.model_test_fraction,
+                model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             ),
             'dataset': GenerateTrainTest(
                 dataset=self.dataset,
-                test_fraction=self.model_test_fraction
+                user_fraction=self.model_user_fraction
             )
         }
     
@@ -661,8 +667,8 @@ class BuildRecommendationGraph(luigi.Task):
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
     # TODO: also implement crossfold techniques
-    model_test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -677,7 +683,7 @@ class BuildRecommendationGraph(luigi.Task):
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
-                model_test_fraction=self.model_test_fraction,
+                model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             ),
         }
@@ -722,8 +728,8 @@ class ComputeRecommendationUsersDiversities(luigi.Task):
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
     # TODO: also implement crossfold techniques
-    model_test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -736,7 +742,7 @@ class ComputeRecommendationUsersDiversities(luigi.Task):
             model_n_iterations=self.model_n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
-            model_test_fraction=self.model_test_fraction,
+            model_user_fraction=self.model_user_fraction,
             n_recommendations=self.n_recommendations
         )
 
@@ -777,8 +783,8 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
     # TODO: also implement crossfold techniques
-    model_test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -791,7 +797,7 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
             model_n_iterations=self.model_n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
-            model_test_fraction=self.model_test_fraction,
+            model_user_fraction=self.model_user_fraction,
             n_recommendations=self.n_recommendations
         )
     
@@ -840,8 +846,8 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
     # TODO: also implement crossfold techniques
-    model_test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -859,7 +865,7 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
-                model_test_fraction=self.model_test_fraction,
+                model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             ),
         }
@@ -907,8 +913,8 @@ class ComputeRecommendationWithListeningsUsersDiversitiesIncrease(luigi.Task):
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
     # TODO: also implement crossfold techniques
-    model_test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -922,7 +928,7 @@ class ComputeRecommendationWithListeningsUsersDiversitiesIncrease(luigi.Task):
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
-                model_test_fraction=self.model_test_fraction,
+                model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             ),
             'original_diversities': ComputeUsersDiversities(
@@ -974,8 +980,8 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
     # TODO: also implement crossfold techniques
-    model_test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -988,7 +994,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
             model_n_iterations=self.model_n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
-            model_test_fraction=self.model_test_fraction,
+            model_user_fraction=self.model_user_fraction,
             n_recommendations=self.n_recommendations
         )
         
@@ -1044,8 +1050,8 @@ class PlotDiversityVsLatentFactors(luigi.Task):
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
     # TODO: also implement crossfold techniques
-    model_test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1061,7 +1067,7 @@ class PlotDiversityVsLatentFactors(luigi.Task):
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
-                model_test_fraction=self.model_test_fraction,
+                model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             )
             tasks[(n_factors, 'metrics')] = EvaluateModel(
@@ -1069,7 +1075,7 @@ class PlotDiversityVsLatentFactors(luigi.Task):
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
-                model_test_fraction=self.model_test_fraction,
+                model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             )
 
@@ -1147,8 +1153,8 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
     # TODO: also implement crossfold techniques
-    model_test_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = test_fraction * n_total)'
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1164,7 +1170,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
-                model_test_fraction=self.model_test_fraction,
+                model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             )
 
