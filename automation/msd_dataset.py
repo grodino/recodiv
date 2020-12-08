@@ -1,6 +1,8 @@
 import json
+import time
 import shutil
 import pickle
+import logging
 from pathlib import Path
 
 import luigi
@@ -21,7 +23,8 @@ from recodiv.triversity.graph import IndividualHerfindahlDiversities
 
 # Path to generated folder
 GENERATED = Path('generated/')
-
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 ################################################################################
 # DATASETS DECLARATION                                                         #
@@ -70,8 +73,10 @@ class MsdDataset(Dataset):
         songs are imported
         """
 
-        print('INFO Importing dataset')
+        logger.info('Importing dataset')
+        t = time.perf_counter()
 
+        logger.debug('Reading user->item links file')
         user_item = pd.read_csv(
             Path(self.IMPORT_FOLDER).joinpath('msd_users.txt'),
             sep=' ',
@@ -87,6 +92,7 @@ class MsdDataset(Dataset):
             engine='c'
         )[['user', 'item', 'rating']]
 
+        logger.debug('Reading item->tag links file')
         item_tag = pd.read_csv(
             Path(self.IMPORT_FOLDER).joinpath('msd_tags.txt'),
             sep=' ',
@@ -103,6 +109,7 @@ class MsdDataset(Dataset):
 
         # Select a portion of the dataset
         if self.n_users > 0:
+            logger.debug(f'Sampling {self.n_users} users')
             rng = np.random.default_rng()
 
             users = user_item['user'].unique()
@@ -113,11 +120,18 @@ class MsdDataset(Dataset):
             user_item.reset_index(inplace=True)
 
         # Only keep songs that are listened to
-        item_tag.set_index('item', inplace=True)
-        item_tag = item_tag.loc[user_item['item']].reset_index().drop_duplicates()
+        # Too slow when importing the whole dataset
+        # logger.debug(f'Removing songs not listened to')
+        # item_tag.set_index('item', inplace=True)
+        # item_tag = item_tag.loc[user_item['item']].reset_index().drop_duplicates()
+
+        logger.debug(f'Finished importing dataset in {time.perf_counter() - t}')
 
         self.user_item = user_item
         self.item_tag = item_tag
+
+        del user_item
+        del item_tag
 
     def __str__(self):
         return self.NAME
