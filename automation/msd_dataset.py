@@ -276,10 +276,9 @@ class PlotUserVolumeHistogram(luigi.Task):
         ax.set_xlabel('User volume')
         ax.set_ylabel('User count')
         ax.set_title('Histogram of user volume')
-        pl.show()
         
         figure.savefig(self.output().path, format='png', dpi=300)
-        del figure
+        del figure, ax
 
 
 class ComputeUsersDiversities(luigi.Task):
@@ -334,12 +333,13 @@ class PlotUsersDiversitiesHistogram(luigi.Task):
         self.output().makedirs()
         diversities = pd.read_csv(self.input().path)
 
-        pl.hist(diversities['diversity'].where(lambda x: x < 40), bins=100)
-        pl.xlabel('Diversity index')
-        pl.ylabel('User count')
-        pl.title('Histogram of user diversity index')
-        pl.savefig(self.output().path, format='png', dpi=300)
-        pl.close()
+        fig, ax = plot_histogram(diversities['diversity'].to_numpy(), min_quantile=0)
+        ax.set_xlabel('Diversity index')
+        ax.set_ylabel('User count')
+        ax.set_title('Histogram of user diversity index')
+        fig.savefig(self.output().path, format='png', dpi=300)
+        
+        del fig, ax
 
 
 class ComputeTagsDiversities(luigi.Task):
@@ -394,16 +394,13 @@ class PlotTagsDiversitiesHistogram(luigi.Task):
         self.output().makedirs()
         diversities = pd.read_csv(self.input().path)
 
-        print('mean tag diversity', diversities['diversity'].mean())
-        print('min tag diversity', diversities['diversity'].min())
-        print('max tag diversity', diversities['diversity'].max())
-
-        pl.hist(diversities['diversity'].where(lambda x: x < 1e7), bins=100)
-        pl.xlabel('Diversity index')
-        pl.ylabel('Tag count')
-        pl.title('Histogram of tag diversity index')
-        pl.savefig(self.output().path, format='png', dpi=300)
-        pl.close()
+        fig, ax = plot_histogram(diversities['diversity'].to_numpy(), min_quantile=0)
+        ax.set_xlabel('Diversity index')
+        ax.set_ylabel('Tag count')
+        ax.set_title('Histogram of tag diversity index')
+        fig.savefig(self.output().path, format='png', dpi=300)
+        
+        del fig, ax
 
 
 ################################################################################
@@ -416,7 +413,7 @@ class GenerateTrainTest(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
     user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     def requires(self):
@@ -452,7 +449,7 @@ class TrainTestInfo(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
     user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     def requires(self):
@@ -504,7 +501,7 @@ class TrainModel(luigi.Task):
     )
     # TODO: also implement crossfold techniques
     user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     evaluate_iterations = luigi.parameter.BoolParameter(
@@ -527,15 +524,15 @@ class TrainModel(luigi.Task):
         model = self.dataset.base_folder.joinpath(
             f'model-{self.n_iterations}it-{self.n_factors}f-{str(self.regularization).replace(".", "_")}reg/'
         )
+
+        out = {'model': luigi.LocalTarget(model.joinpath('model.bpk'))}
         
-        return {
-            'model': luigi.LocalTarget(
-                model.joinpath('model.bpk')
-            ),
-            'training_metrics': luigi.LocalTarget(
-                model.joinpath(f'training-metrics.parquet')
+        if self.evaluate_iterations == True:
+            out['training_metrics'] = luigi.LocalTarget(
+                model.joinpath(f'training-metrics.csv')
             )
-        }
+
+        return out
     
     def run(self):
         for out in self.output().values():
@@ -558,7 +555,9 @@ class TrainModel(luigi.Task):
         )
 
         binpickle.dump(model, self.output()['model'].path)
-        metrics.to_parquet(self.output()['training_metrics'].path)
+
+        if self.evaluate_iterations == True:
+            metrics.to_csv(self.output()['training_metrics'].path)
         
 
 class GenerateRecommendations(luigi.Task):
@@ -579,7 +578,7 @@ class GenerateRecommendations(luigi.Task):
     )
     # TODO: also implement crossfold techniques
     model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -640,7 +639,7 @@ class EvaluateModel(luigi.Task):
     )
     # TODO: also implement crossfold techniques
     model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -705,6 +704,83 @@ class EvaluateModel(luigi.Task):
         )
 
 
+class TuneModelHyperparameters(luigi.Task):
+    """Evaluate a model on a hyperparameter grid and get the best combination
+    
+    The best combination is defined as the one that yelds the best NDCG
+    """
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors_values = luigi.parameter.ListParameter(
+        description='List of numer of user/item latent factors'
+    )
+    model_regularization_values = luigi.parameter.FloatParameter(
+        description='List of regularization factors for the norm of user/item factors'
+    )
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        grid = np.meshgrid(self.model_n_factors_values, self.model_regularization_values)
+        # Transform np.meshgrid into list od tuples, with each tuple
+        # representing a set of parameters to train the model against
+        self.hyperparameters = list(zip(*map(lambda x: x.flatten(), grid)))
+        
+        required = {}
+
+        for n_factors, regularization in self.hyperparameters:
+            required[(n_factors, regularization)] = EvaluateModel(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            )
+        
+        return required
+    
+    def output(self):
+        aggregated = self.dataset.base_folder.joinpath('aggregated')
+        
+        return luigi.LocalTarget(
+            aggregated.joinpath(f'{self.model_n_factors_values}factors_{self.model_regularization_values}reg_{self.n_recommendations}reco_model_eval.json'),
+            format=Nop
+        )
+
+    def run(self):
+        self.output().makedirs()
+        metrics = pd.DataFrame()
+
+        for (n_factors, regularization), metrics_file in self.input().items():
+            metric = pd.read_json(metrics_file.path, orient='index').transpose()
+            metric['n_factors'] = n_factors
+            metric['regularization'] = regularization
+
+            metrics = pd.concat((metrics, metric))
+
+        metrics.set_index(['n_factors', 'regularization'], inplace=True)
+        optimal = {}
+
+        opt_n_factors, opt_regularization = metrics.index[metrics['ndcg'].argmax()]
+        optimal['n_factors'] = float(opt_n_factors)
+        optimal['regularization'] = float(opt_regularization)
+        
+        with open(self.output().path, 'w') as file:
+            json.dump(optimal, file, indent=4)
+
+
 ################################################################################
 # RECOMMENDATIONS ANALYSIS                                                     #
 ################################################################################
@@ -726,7 +802,7 @@ class BuildRecommendationGraph(luigi.Task):
     )
     # TODO: also implement crossfold techniques
     model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -787,7 +863,7 @@ class ComputeRecommendationUsersDiversities(luigi.Task):
     )
     # TODO: also implement crossfold techniques
     model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -842,7 +918,7 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
     )
     # TODO: also implement crossfold techniques
     model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -869,21 +945,14 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         self.output().makedirs()
         diversities = pd.read_csv(self.input().path)
 
-        mean = diversities['diversity'].mean()
-
-        pl.hist(
-            diversities['diversity'].where(
-                lambda x: x < diversities['diversity'].quantile(.99)
-            ),
-            bins=100
-        )
-        pl.axvline(mean, ls='--', color='pink')
-        pl.text(mean + 1, 2, f'mean: {mean:.02f}', color='pink')
-        pl.xlabel('Diversity index')
-        pl.ylabel('User count')
-        pl.title('Histogram of recommendations diversity index')
-        pl.savefig(self.output().path, format='png', dpi=300)
-        pl.close()
+        fig, ax = plot_histogram(diversities['diversity'].to_numpy(), min_quantile=0)
+        
+        ax.set_xlabel('Diversity index')
+        ax.set_ylabel('User count')
+        ax.set_title('Histogram of recommendations diversity index')
+        fig.savefig(self.output().path, format='png', dpi=300)
+        
+        del fig, ax
 
 
 class BuildRecommendationsWithListeningsGraph(luigi.Task):
@@ -905,7 +974,7 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
     )
     # TODO: also implement crossfold techniques
     model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -972,7 +1041,7 @@ class ComputeRecommendationWithListeningsUsersDiversitiesIncrease(luigi.Task):
     )
     # TODO: also implement crossfold techniques
     model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1039,7 +1108,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
     )
     # TODO: also implement crossfold techniques
     model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1068,23 +1137,14 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         deltas = pd.read_csv(
             self.input().path
         )
-        mean = deltas['diversity'].mean()
 
-        pl.hist(
-            deltas['diversity'].where(
-                lambda x: deltas['diversity'].quantile(.05) <  x
-            ).where(
-                lambda x: x < deltas['diversity'].quantile(.99)
-            ), 
-            bins=100
-        )
-        pl.axvline(mean, ls='--', color='pink')
-        pl.text(mean + 1, 2, f'mean: {mean:.02f}', color='pink')
-        pl.xlabel('Diversity index')
-        pl.ylabel('User count')
-        pl.title('Histogram of diversity increase due to recommendations')
-        pl.savefig(self.output().path, format='png', dpi=300)
-        pl.close()
+        fig, ax = plot_histogram(deltas['diversity'].to_numpy(), min_quantile=.05, max_quantile=1)
+        ax.set_xlabel('Diversity index')
+        ax.set_ylabel('User count')
+        ax.set_title('Histogram of diversity increase due to recommendations')
+        fig.savefig(self.output().path, format='png', dpi=300)
+        
+        del fig, ax
 
 
 ################################################################################
@@ -1109,7 +1169,7 @@ class PlotDiversityVsLatentFactors(luigi.Task):
     )
     # TODO: also implement crossfold techniques
     model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1140,7 +1200,7 @@ class PlotDiversityVsLatentFactors(luigi.Task):
         return tasks
 
     def output(self):
-        figures = self.dataset.base_folder.joinpath('figures')
+        figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
             f'recommendations_diversity_vs_{self.n_factors_values}.png'
         ))
@@ -1212,7 +1272,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
     )
     # TODO: also implement crossfold techniques
     model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of test/train data (n_test = user_fraction * n_total)'
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1235,7 +1295,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
         return tasks
 
     def output(self):
-        figures = self.dataset.base_folder.joinpath('figures')
+        figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
             f'recommendations_diversity_increase_vs_{self.n_factors_values}.png'
         ))

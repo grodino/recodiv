@@ -122,9 +122,10 @@ def evaluate_model(recommendations, test, metrics):
     :param recommendations: pd.DataFrame with at least the following columns :  
         'user', 'item', 'score', 'rank'
     :param test: pd.DataFrame. The testing data
+    :param metrics: list. A list of metrics' names (see recodiv.model.METRICS)
     """
 
-    analysis = topn.RecListAnalysis(n_jobs=4)
+    analysis = topn.RecListAnalysis()
     users = test.user.unique()
     rec_users = recommendations['user'].unique()
 
