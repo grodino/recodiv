@@ -13,6 +13,7 @@ import pandas as pd
 from matplotlib import pyplot as pl
 
 from recodiv.utils import dataset_info
+from recodiv.utils import plot_histogram
 from recodiv.utils import generate_graph
 from recodiv.model import train_model
 from recodiv.model import split_dataset
@@ -221,7 +222,64 @@ class DatasetInfo(luigi.Task):
         del graph
 
 
-# TODO : compute and plot user volume histogram
+class ComputeUserVolume(luigi.Task):
+    """Compute the number of songs listened by each user"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    def output(self):
+        return luigi.LocalTarget(
+            self.dataset.data_folder.joinpath('users_volume.csv')
+        )
+
+    def requires(self):
+        return ImportDataset(
+            dataset=self.dataset
+        )
+
+    def run(self):
+        user_item = pd.read_csv(self.input()['user_item'].path)
+        user_item[['user', 'item']] \
+            .groupby('user') \
+            .count() \
+            .reset_index() \
+            .rename(columns={'item': 'n_items'}) \
+            .to_csv(self.output().path, index=False)
+
+
+class PlotUserVolumeHistogram(luigi.Task):
+    """Plot the user volume histogram"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    def output(self):
+        figures = self.dataset.data_folder.joinpath(f'figures')
+        return luigi.LocalTarget(figures.joinpath('user_volume_histogram.png'))
+
+    def requires(self):
+        return ComputeUserVolume(
+            dataset=self.dataset
+        )
+    
+    def run(self):
+        self.output().makedirs()
+        user_volume = pd.read_csv(self.input().path)
+
+        figure, ax = plot_histogram(
+            user_volume['n_items'].to_numpy(),
+            min_quantile=0
+        )
+        ax.set_xlabel('User volume')
+        ax.set_ylabel('User count')
+        ax.set_title('Histogram of user volume')
+        pl.show()
+        
+        figure.savefig(self.output().path, format='png', dpi=300)
+        del figure
 
 
 class ComputeUsersDiversities(luigi.Task):

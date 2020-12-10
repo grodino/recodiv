@@ -18,6 +18,7 @@ def main():
 
     tasks = [
         DatasetInfo(dataset=msd_dataset),
+        PlotUserVolumeHistogram(dataset=msd_dataset),
         PlotUsersDiversitiesHistogram(dataset=msd_dataset),
         PlotTagsDiversitiesHistogram(dataset=msd_dataset),
         BuildDatasetGraph(dataset=msd_dataset),

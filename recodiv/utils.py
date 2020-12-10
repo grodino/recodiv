@@ -1,6 +1,8 @@
 from pathlib import Path
 
+import numpy as np
 from tqdm import tqdm
+from matplotlib import pyplot as pl
 
 from recodiv.triversity.graph import IndividualHerfindahlDiversities
 
@@ -89,3 +91,37 @@ def dataset_info(graph):
         'mean_user_song_volume': mean_user_song_volume,
         'mean_song_tag_volume': mean_song_tag_volume,
     }
+
+
+def plot_histogram(values, min_quantile=.1, max_quantile=.9, n_bins=100, ax=None):
+    """Plot the histogram of values with information on mean
+
+    :param values: np.ndarray (N,) containing the values from which to compute
+        the histogram.
+    :param min_quantile: float. Ignore the values that are smaller than 
+        (1 - min_quantile)*100 percent of the values.
+    :param max_quantile: float. Ignore the values that are higher than 
+        max_quantiles*100 percent of the values.
+    :param n_bins: the number of bins of the histogram. See 
+        matplotlib.pyplot.hist
+    :param ax: The matplolib axe to plot on. If None, the Figure and Axes are 
+        created and returned
+
+    :returns: (matplotlib.figure.Figure or None, matplotlib.axes.Axes). If ax is
+        not given, return Figure and Axes objects, else return None and Axes 
+        object
+    """
+
+    min_value, max_value = np.quantile(values, [min_quantile, max_quantile])
+    mean = np.mean(values)
+
+    if ax == None:
+        fig, ax = pl.subplots()
+    else:
+        fig = None
+
+    ax.hist(values[(min_value < values) & (values < max_value)], bins=n_bins)
+    ax.axvline(mean, ls='--', color='pink')
+    ax.text(mean + 1, 2, f'mean: {mean:.02f}', color='pink')
+
+    return fig, ax
