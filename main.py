@@ -1,6 +1,8 @@
 import os
+os.environ['LK_NUM_PROCS'] = '12,2'
 
 import luigi
+import numba
 from lenskit.util import log_to_stderr
 
 from automation.msd_dataset import *
@@ -8,11 +10,10 @@ from automation.msd_dataset import *
 
 def main():
     log_to_stderr()
-    # os.environ['LK_NUM_PROCS'] = '10'
 
-    msd_dataset = MsdDataset(n_users=10_000)
-    # msd_dataset = MsdDataset(n_users=0)
-    # n_factors_values = list(range(50, 300, 20)) + [500,]
+    # msd_dataset = MsdDataset(n_users=10_000)
+    msd_dataset = MsdDataset(n_users=0)
+    n_factors_values = list(range(50, 300, 20)) + [500,]
     # n_factors_values = list(range(30, 140, 10))
     n_factors_values = [30, 60, 100, 150, 200, 300, 400, 500, 1_000]
     regularization_values = [.01, .02, .03, .04, .05, .1, .3, .5, .7, 1, 5]
