@@ -676,9 +676,7 @@ class EvaluateModel(luigi.Task):
         recommendations = pd.read_csv(self.input()['recommendations'].path)
         test = pd.read_csv(self.input()['dataset']['test'].path)
 
-        # NOTE : Issue appears when the two following conditions are met :
-        #   - the train test is split by data row (ie by removings all
-        #     listenings of a song by a particular user)
+        # NOTE : Issue appears when the two following condition is met :
         #   - a user had only one listening and it is put in the test set
         #
         # Then, the model will not know the user, thus will not be able to
@@ -779,6 +777,88 @@ class TuneModelHyperparameters(luigi.Task):
         
         with open(self.output().path, 'w') as file:
             json.dump(optimal, file, indent=4)
+
+
+class PlotModelTuning(luigi.Task):
+    """Plot the 2D matrix of the model performance (ndcg value) on a 
+       hyperparameter grid"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors_values = luigi.parameter.ListParameter(
+        description='List of numer of user/item latent factors'
+    )
+    model_regularization_values = luigi.parameter.FloatParameter(
+        description='List of regularization factors for the norm of user/item factors'
+    )
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        grid = np.meshgrid(self.model_n_factors_values, self.model_regularization_values)
+        # Transform np.meshgrid into list od tuples, with each tuple
+        # representing a set of parameters to train the model against
+        self.hyperparameters = list(zip(*map(lambda x: x.flatten(), grid)))
+        
+        required = {}
+
+        for n_factors, regularization in self.hyperparameters:
+            required[(n_factors, regularization)] = EvaluateModel(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            )
+        
+        return required
+    
+    def output(self):
+        aggregated = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+        
+        return luigi.LocalTarget(
+            aggregated.joinpath(f'{self.model_n_factors_values}factors_{self.model_regularization_values}reg_{self.n_recommendations}reco_model_eval.png'),
+            format=Nop
+        )
+
+    def run(self):
+        self.output().makedirs()
+        metrics = pd.DataFrame()
+
+        for (n_factors, regularization), metrics_file in self.input().items():
+            metric = pd.read_json(metrics_file.path, orient='index').transpose()
+            metric['n_factors'] = n_factors
+            metric['regularization'] = regularization
+
+            metrics = pd.concat((metrics, metric))
+
+        metrics_matrix = metrics.pivot(index='n_factors', columns='regularization')['ndcg']
+
+        fig, ax = pl.subplots()
+
+        img = ax.imshow(metrics_matrix.to_numpy())
+        fig.colorbar(img)
+
+        ax.set_xticklabels(['A', ] + list(metrics_matrix.columns))
+        ax.set_yticklabels(['A', ] + list(metrics_matrix.index))
+
+        ax.set_ylabel('Number of latent factors')
+        ax.set_xlabel('Regularization coefficient')
+        ax.set_title('Model performance evaluation with NDCG')
+
+        fig.savefig(self.output().path, format='png', dpi=300)
+        del fig, ax
 
 
 ################################################################################
@@ -1202,7 +1282,7 @@ class PlotDiversityVsLatentFactors(luigi.Task):
     def output(self):
         figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
-            f'recommendations_diversity_vs_{self.n_factors_values}.png'
+            f'recommendations_diversity_vs_{self.n_factors_values}factors.png'
         ))
 
     def run(self):
@@ -1225,7 +1305,7 @@ class PlotDiversityVsLatentFactors(luigi.Task):
                 metrics = pd.concat((metrics, metric))
         
         metrics.set_index('n_factors', inplace=True)
-        metrics = metrics - metrics.loc[metrics.index[0]]
+        metrics = metrics / metrics.loc[metrics.index[0]]
 
         fig, ax1 = pl.subplots()        
 
@@ -1316,6 +1396,109 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
         pl.xlabel('number of factors')
         pl.ylabel('mean diversity increase')
         pl.title('User diversity increase after recommendations')
+        pl.savefig(self.output().path, format='png', dpi=300)
+        pl.close()
+
+
+class PlotDiversityVsRegularization(luigi.Task):
+    """Plot the mean user diversity of the recommendations as a function of the
+       number of latent factors"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization_values = luigi.parameter.ListParameter(
+        description='List of regularization factor for the norm of user/item factors'
+    )
+    # TODO: also implement crossfold techniques
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate for each user at each training iteration if evaluate_iterations==True'
+    )
+
+    def requires(self):
+        tasks = {}
+
+        for regularization in self.model_regularization_values:
+            tasks[(regularization, 'diversities')] = ComputeRecommendationUsersDiversities(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            )
+            tasks[(regularization, 'metrics')] = EvaluateModel(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            )
+
+        return tasks
+
+    def output(self):
+        figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+        return luigi.LocalTarget(figures.joinpath(
+            f'recommendations_diversity_vs_{self.model_regularization_values}reg.png'
+        ))
+
+    def run(self):
+        self.output().makedirs()
+
+        mean_diversities = []
+        metrics = pd.DataFrame()
+        regularization = []
+
+        for key, value in self.input().items():
+            if key[1] == 'diversities':
+                diversities = pd.read_csv(value.path)
+
+                regularization.append(key[0])
+                mean_diversities.append(diversities['diversity'].mean())
+            
+            elif key[1] == 'metrics':
+                metric = pd.read_json(value.path, orient='index').transpose()
+                metric['regularization'] = key[0]
+                metrics = pd.concat((metrics, metric))
+        
+        metrics.set_index('regularization', inplace=True)
+        metrics = metrics / metrics.loc[metrics.index[0]]
+
+        fig, ax1 = pl.subplots()        
+
+        # Add plots
+        div_line = ax1.semilogx(regularization, mean_diversities, color='green', label='diversity')
+        ax1.set_xlabel('Regularization coefficient')
+        ax1.set_ylabel('mean diversity')
+
+        ax2 = ax1.twinx()
+        ax2.set_ylabel('metrics')
+        metrics_lines = metrics.plot(ax=ax2, legend=False, logy=True).get_lines()
+        
+        # Obscure trick to have only one legend
+        lines = [*div_line, ]
+
+        for line in metrics_lines:
+            lines.append(line)
+
+        labels = ['diversity', ] + list(metrics.columns)
+        ax1.legend(lines, labels, loc='center right')
+
+        pl.title('User diversity of recommendations')
+        fig.tight_layout()
         pl.savefig(self.output().path, format='png', dpi=300)
         pl.close()
 
