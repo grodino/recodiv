@@ -254,7 +254,7 @@ class NPartiteGraph:
             self.last_id[set_id] += 1
             
             return x
-        
+
     def add_link_d(self, origin_set, origin_node, destination_set, destination_node, weight):
         """Add a directed link in the n-partite graph.
 
@@ -538,9 +538,15 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
         :param path: the ids of the sets ("layers") to be traversed (in given
             order) by the spread.
 
-        :returns: a dict such that result[node_id] = diversity value
+        :returns: a dict such that result[node_hash] = diversity value
         """
 
-        result = self.spread_and_divs(path, progress=progress)
+        result = {}
+        result_by_id = self.spread_and_divs(path, progress=progress)
+
+        for node_id, diversity in result_by_id.items():
+            result[self.revids[path[0]][node_id]] = diversity
+
+        del result_by_id
 
         return result
