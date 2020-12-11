@@ -93,7 +93,7 @@ def dataset_info(graph):
     }
 
 
-def plot_histogram(values, min_quantile=.1, max_quantile=.9, n_bins=100, ax=None):
+def plot_histogram(values, min_quantile=.1, max_quantile=.9, n_bins=100, ax=None, log=False):
     """Plot the histogram of values with information on mean
 
     :param values: np.ndarray (N,) containing the values from which to compute
@@ -106,6 +106,7 @@ def plot_histogram(values, min_quantile=.1, max_quantile=.9, n_bins=100, ax=None
         matplotlib.pyplot.hist
     :param ax: The matplolib axe to plot on. If None, the Figure and Axes are 
         created and returned
+    :param log: Set the y axis (the counts) in logscale
 
     :returns: (matplotlib.figure.Figure or None, matplotlib.axes.Axes). If ax is
         not given, return Figure and Axes objects, else return None and Axes 
@@ -120,7 +121,7 @@ def plot_histogram(values, min_quantile=.1, max_quantile=.9, n_bins=100, ax=None
     else:
         fig = None
 
-    ax.hist(values[(min_value < values) & (values < max_value)], bins=n_bins)
+    ax.hist(values[(min_value < values) & (values < max_value)], bins=n_bins, log=log)
     ax.axvline(mean, ls='--', color='pink')
     ax.text(mean + 1, 2, f'mean: {mean:.02f}', color='pink')
 
