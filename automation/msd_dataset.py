@@ -500,7 +500,7 @@ class TrainModel(luigi.Task):
     regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -577,7 +577,7 @@ class GenerateRecommendations(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -638,7 +638,7 @@ class EvaluateModel(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -851,6 +851,7 @@ class PlotModelTuning(luigi.Task):
         img = ax.imshow(metrics_matrix.to_numpy())
         fig.colorbar(img)
 
+        ax.set_xticks([0,] + list(range(len(metrics_matrix.columns))))
         ax.set_xticklabels(['A', ] + list(metrics_matrix.columns))
         ax.set_yticklabels(['A', ] + list(metrics_matrix.index))
 
@@ -865,6 +866,7 @@ class PlotModelTuning(luigi.Task):
 ################################################################################
 # RECOMMENDATIONS ANALYSIS                                                     #
 ################################################################################
+# TODO: do not use 1/rank but the score as rating value
 class BuildRecommendationGraph(luigi.Task):
     """Build the user-song-tag graph for the recommendations"""
 
@@ -881,7 +883,7 @@ class BuildRecommendationGraph(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -917,7 +919,7 @@ class BuildRecommendationGraph(luigi.Task):
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
 
-        user_item = recommendations[['user', 'item', 'rank']]
+        user_item = recommendations[['user', 'item', 'ran']]
         user_item['rating'] = 1 / user_item['rank']
 
         graph = generate_graph(user_item,item_tag)
@@ -942,7 +944,7 @@ class ComputeRecommendationUsersDiversities(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -997,7 +999,7 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1036,6 +1038,10 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         del fig, ax
 
 
+# TODO: think about the relative importance of the recommendations added to the
+# graph: what weight should we give them ? Idea: recontruct the graph of
+# listened songs with the scalar product of user->item factors rather than
+# number of listenings
 class BuildRecommendationsWithListeningsGraph(luigi.Task):
     """Consider the recommendations as all listened by the users and compute the
     corresponding diversity"""
@@ -1053,7 +1059,7 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1121,7 +1127,7 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1180,7 +1186,7 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1237,7 +1243,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1298,7 +1304,7 @@ class PlotDiversityVsLatentFactors(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1401,7 +1407,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1504,7 +1510,7 @@ class PlotDiversityVsRegularization(luigi.Task):
     model_regularization_values = luigi.parameter.ListParameter(
         description='List of regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1607,7 +1613,7 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
     model_regularization_values = luigi.parameter.ListParameter(
         description='List of regularization factor for the norm of user/item factors'
     )
-    # TODO: also implement crossfold techniques
+    
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1693,6 +1699,136 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
         pl.close()
 
 
+class ComputeDiversityVsRecommendationVolume(luigi.Task):
+    """Compute the user diversity of recommendations against the number of
+       recommendations made"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations_values = luigi.parameter.ListParameter(
+        description='List of number of recommendation to generate for each user at each training iteration if evaluate_iterations==True'
+    )
+
+    def requires(self):
+        return {
+            'dataset': ImportDataset(dataset=self.dataset),
+            'recommendations': GenerateRecommendations(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=max(self.n_recommendations_values)
+            ),
+        }
+
+    def output(self):
+        aggregated = self.dataset.base_folder.joinpath('aggregated')
+        return luigi.LocalTarget(aggregated.joinpath(
+            f'recommendations_diversity_vs_{self.n_recommendations_values}reco.csv'
+        ))
+    
+    def run(self):
+        item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
+        recommendations = pd.read_csv(self.input()['recommendations'].path) \
+            .rename(columns={'score': 'rating'})
+
+        mean_diversities = []
+
+        # Not very otpimized, but constructing the graph incrementally would
+        # require to modify triversity
+        # TODO: optimize
+        for n_recommendations in self.n_recommendations_values:
+            user_item = recommendations[recommendations['rank'] <= n_recommendations]
+            
+            graph = generate_graph(user_item,item_tag)
+            graph.normalise_all()
+            diversities = graph.diversities((0, 1, 2))
+            
+            mean_diversities.append(
+                sum(diversities.values()) / len(diversities)
+            )
+
+            del graph
+        
+        pd.DataFrame({
+            'n_recommendations': self.n_recommendations_values,
+            'diversity': mean_diversities
+        }).to_csv(self.output().path, index=False)
+
+
+class PlotDiversityVsRecommendationVolume(luigi.Task):
+    """Plot the user diversity of recommendations against the number of
+       recommendations made"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations_values = luigi.parameter.ListParameter(
+        description='List of number of recommendation to generate for each user at each training iteration if evaluate_iterations==True'
+    )
+
+    def requires(self):
+        return ComputeDiversityVsRecommendationVolume(
+            dataset=self.dataset,
+            model_n_iterations=self.model_n_iterations,
+            model_n_factors=self.model_n_factors,
+            model_regularization=self.model_regularization,
+            model_user_fraction=self.model_user_fraction,
+            n_recommendations_values=self.n_recommendations_values
+        )
+    
+    def output(self):
+        figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+        return luigi.LocalTarget(figures.joinpath(
+            f'recommendations_diversity_vs_{self.n_recommendations_values}reco.png'
+        ))
+
+    def run(self):
+        data = pd.read_csv(self.input().path)
+
+        pl.plot(data['n_recommendations'], data['diversity'])
+        pl.xlabel('Number of recommendations per user')
+        pl.ylabel('Mean user diversity')
+        pl.title('Evolution of diversity and recommendation volume')
+
+        pl.savefig(self.output().path, format='png', dpi=300)
+        pl.close()
+
+
+
+# TODO: plot mean diversity vs recommendation volume
 ################################################################################
 # UTILS                                                                        #
 ################################################################################
