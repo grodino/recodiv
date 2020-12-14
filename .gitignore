@@ -7,6 +7,9 @@
 # data files
 data/
 
+# luigi files
+.luigi
+
 # generated files
 generated/
 
