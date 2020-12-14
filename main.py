@@ -1,6 +1,8 @@
 import os
+os.environ['LK_NUM_PROCS'] = '12,2'
 
 import luigi
+import numba
 from lenskit.util import log_to_stderr
 
 from automation.msd_dataset import *
