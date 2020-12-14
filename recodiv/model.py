@@ -13,6 +13,7 @@ from lenskit import util
 from lenskit import batch
 from lenskit import crossfold as xf
 from lenskit.algorithms import als
+from lenskit.metrics.predict import rmse
 from lenskit.algorithms import Recommender
 
 
@@ -25,7 +26,7 @@ METRICS = {
     'ndcg': topn.ndcg,
     'recall': topn.recall,
     'precision': topn.precision,
-    'recip_rank': topn.recip_rank
+    'recip_rank': topn.recip_rank,
 }
 
 
@@ -73,6 +74,7 @@ def train_model(
         metrics is an empty pd.DataFrame
     """
 
+    # Encapsulate the model into a TopN recommender
     model = Recommender.adapt(
         als.ImplicitMF(n_factors, iterations=n_iterations, progress=tqdm)
     )
@@ -108,6 +110,12 @@ def train_model(
     return model, metrics
     
 
+def generate_predictions(model, user_item):
+    """Generate the rating predictions for the user for earch item"""
+
+    return batch.predict(model, user_item)
+     
+
 def generate_recommendations(model, ratings, n_recommendations=50):
     """Generate recommendations for a given model"""
 
@@ -116,7 +124,7 @@ def generate_recommendations(model, ratings, n_recommendations=50):
     return batch.recommend(model, users, n_recommendations)
 
 
-def evaluate_model(recommendations, test, metrics):
+def evaluate_model_recommendations(recommendations, test, metrics):
     """Evaluates a model via its recommendations
     
     :param recommendations: pd.DataFrame with at least the following columns :  
@@ -133,3 +141,21 @@ def evaluate_model(recommendations, test, metrics):
         analysis.add_metric(METRICS[metric_name])
 
     return analysis.compute(recommendations, test)
+
+
+def evaluate_model_predictions(pairs):
+    """Evaluates a model predictions via RMSE
+
+    Computes the mean of (pairs['rating'] - pairs['prediction'])**2 for user in
+    predictions 
+
+    :param pairs: pd.DataFrame with at least the following columns: 'user,
+        'item', 'prediction', 'rating'
+
+    :returns: pd.Series, the mean RMSE for each user
+    """
+
+    return pairs.groupby('user') \
+        .apply(lambda df: rmse(df.prediction, df.rating)) \
+        .rename('rmse')
+    

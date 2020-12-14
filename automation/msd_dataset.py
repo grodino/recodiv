@@ -17,8 +17,10 @@ from recodiv.utils import plot_histogram
 from recodiv.utils import generate_graph
 from recodiv.model import train_model
 from recodiv.model import split_dataset
-from recodiv.model import evaluate_model
+from recodiv.model import generate_predictions
 from recodiv.model import generate_recommendations
+from recodiv.model import evaluate_model_predictions
+from recodiv.model import evaluate_model_recommendations
 from recodiv.triversity.graph import IndividualHerfindahlDiversities
 
 
@@ -559,7 +561,119 @@ class TrainModel(luigi.Task):
 
         if self.evaluate_iterations == True:
             metrics.to_csv(self.output()['training_metrics'].path)
+
+# TODO: create a ModelInfo task
+
+class GeneratePredictions(luigi.Task):
+    """Compute the predicted rating values for the test set"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return {
+            'data': GenerateTrainTest(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction
+            ),
+            'model': TrainModel(
+                dataset=self.dataset,
+                n_iterations=self.model_n_iterations, 
+                n_factors=self.model_n_factors, 
+                regularization=self.model_regularization,
+                user_fraction=self.model_user_fraction,
+                evaluate_iterations=False
+            )
+        }
+
+    def output(self):
+        model = Path(self.input()['model']['model'].path).parent
         
+        return luigi.LocalTarget(
+            model.joinpath(f'predictions-{self.n_recommendations}.csv')
+        )
+    
+    def run(self):
+        self.output().makedirs()
+        
+        user_item = pd.read_csv(self.input()['data']['test'].path)
+        model = binpickle.load(self.input()['model']['model'].path)
+
+        generate_predictions(
+            model, 
+            user_item,
+        ).to_csv(self.output().path, index=False)
+
+
+class ComputeUserRMSE(luigi.Task):
+    """Compute the user prediction RMSE for each user in the test set"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return GeneratePredictions(
+            dataset=self.dataset,
+            model_n_iterations=self.model_n_iterations,
+            model_n_factors=self.model_n_factors,
+            model_regularization=self.model_regularization,
+            model_user_fraction=self.model_user_fraction,
+            n_recommendations=self.n_recommendations
+        )
+    
+    def output(self):
+        model = Path(self.input().path).parent
+        
+        return luigi.LocalTarget(
+            model.joinpath(f'user_rmse.csv'),
+            format=Nop
+        )
+    
+    def run(self):
+        self.output().makedirs()
+
+        predictions = pd.read_csv(self.input().path)
+        evaluate_model_predictions(predictions).reset_index() \
+            .to_csv(self.output().path, index=False)
+
 
 class GenerateRecommendations(luigi.Task):
     """Generate recommendations for users in test dataset with a given model"""
@@ -657,6 +771,14 @@ class EvaluateModel(luigi.Task):
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             ),
+            'user_rmse': ComputeUserRMSE(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
             'dataset': GenerateTrainTest(
                 dataset=self.dataset,
                 user_fraction=self.model_user_fraction
@@ -675,6 +797,7 @@ class EvaluateModel(luigi.Task):
         self.output().makedirs()
 
         recommendations = pd.read_csv(self.input()['recommendations'].path)
+        user_rmse = pd.read_csv(self.input()['user_rmse'].path)
         test = pd.read_csv(self.input()['dataset']['test'].path)
 
         # NOTE : Issue appears when the two following condition is met :
@@ -694,9 +817,15 @@ class EvaluateModel(luigi.Task):
         test.reset_index(inplace=True)
 
         metrics_names = ['ndcg', 'precision']
-        metrics = evaluate_model(recommendations, test, metrics_names)
+        metrics = evaluate_model_recommendations(
+            recommendations,
+            test, 
+            metrics_names
+        )[metrics_names].mean()
 
-        metrics[metrics_names].mean().to_json(
+        metrics['rmse'] = user_rmse['rmse'].mean()
+        
+        metrics.to_json(
             self.output().path,
             orient='index',
             indent=4
@@ -1283,6 +1412,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
 
 # TODO : correlation between diversity increase and user diversity
 # TODO : correlation between recommendation diversity and user diversity (vs volume/latent factors)
+# TODO : correlation between user RMSE and user recommendation diversity
 
 ################################################################################
 # SPECIFIC EXPERIMENTS                                                         #
@@ -1745,6 +1875,8 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
         ))
     
     def run(self):
+        self.output().makedirs()
+        
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path) \
             .rename(columns={'score': 'rating'})
@@ -1816,6 +1948,7 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
         ))
 
     def run(self):
+        self.output().makedirs()
         data = pd.read_csv(self.input().path)
 
         pl.plot(data['n_recommendations'], data['diversity'])
@@ -1827,8 +1960,6 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
         pl.close()
 
 
-
-# TODO: plot mean diversity vs recommendation volume
 ################################################################################
 # UTILS                                                                        #
 ################################################################################
