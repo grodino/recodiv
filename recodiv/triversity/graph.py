@@ -442,7 +442,7 @@ class NPartiteGraph:
 
         self._div_init(self.last_id[path[0]], self.last_id[path[-1]])
 
-        for node, neighbors in tqdm(self.graphs[path[0]][path[1]].items(), disable=not(progress)):            
+        for node, neighbors in tqdm(self.graphs[path[0]][path[1]].items(), disable=not(progress), desc='Computing diversities'):            
             distribution = self._spread_path(neighbors, path[1:])
             self._div_add(node, distribution)
         
