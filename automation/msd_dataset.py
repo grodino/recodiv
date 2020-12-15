@@ -991,15 +991,32 @@ class PlotModelTuning(luigi.Task):
             metrics = pd.concat((metrics, metric))
 
         metrics_matrix = metrics.pivot(index='n_factors', columns='regularization')['ndcg']
+        
+        metrics_matrix_n = metrics_matrix.to_numpy()
+        opt_n_factors, opt_regularization = np.unravel_index(
+            metrics_matrix_n.flatten().argmax(),
+            metrics_matrix_n.shape
+        )
 
         fig, ax = pl.subplots()
 
-        img = ax.imshow(metrics_matrix.to_numpy())
+        img = ax.imshow(metrics_matrix_n)
         fig.colorbar(img)
 
         ax.set_xticks([0,] + list(range(len(metrics_matrix.columns))))
         ax.set_xticklabels(['A', ] + list(metrics_matrix.columns))
+
+        ax.set_yticks([0,] + list(range(len(metrics_matrix.index))))
         ax.set_yticklabels(['A', ] + list(metrics_matrix.index))
+
+        ax.text(
+            opt_regularization,
+            opt_n_factors, 
+            'MAX', 
+            ha="center", 
+            va="center", 
+            color="w"
+        )
 
         ax.set_ylabel('Number of latent factors')
         ax.set_xlabel('Regularization coefficient')
@@ -1066,7 +1083,7 @@ class BuildRecommendationGraph(luigi.Task):
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
 
-        user_item = recommendations[['user', 'item', 'ran']]
+        user_item = recommendations[['user', 'item', 'rank']]
         user_item['rating'] = 1 / user_item['rank']
 
         graph = generate_graph(user_item,item_tag)
@@ -1429,6 +1446,69 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         fig.savefig(self.output().path, format='png', dpi=300)
         
         del fig, ax, deltas
+
+
+class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
+    """Plot the user diversity increase with respect to the user diversity
+       before recommendations"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return {
+            'user_diversity': ComputeUsersDiversities(
+                dataset=self.dataset
+            ),
+            'diversity_increase': ComputeRecommendationWithListeningsUsersDiversityIncrease(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
+        }
+
+    def output(self):
+        figures = Path(self.input()['diversity_increase'].path).parent.joinpath('figures')
+        return luigi.LocalTarget(figures.joinpath(
+            f'{self.n_recommendations}-recommendations_diversity_increase_vs_original_diversity.png'
+        ))
+
+    def run(self):
+        diversities = pd.read_csv(self.input()['user_diversity'].path)
+        increase = pd.read_csv(self.input()['diversity_increase'].path).rename(columns={'diversity': 'increase'})
+
+        # inner join, only keep users for whom we calculated a diversity increase value
+        merged = increase.merge(diversities, on='user')
+        
+        merged.plot.scatter(x='diversity', y='increase')
+        pl.title('User diversity before and after recomendations')
+
+        pl.savefig(self.output().path, format='png', dpi=300)
+
+        del diversities, increase, merged
+
 
 # TODO : correlation between diversity increase and user diversity
 # TODO : correlation between recommendation diversity and user diversity (vs volume/latent factors)
@@ -2011,7 +2091,7 @@ class CollectAllModelFigures(luigi.Task):
             shutil.copy(figure, destination)
 
 
-class DeleteAllModelFigures(luigi.Task):
+class DeleteAllModelFigures(luigi.Task): 
     """Delete all figures in models folders"""
 
     dataset: Dataset = luigi.parameter.Parameter(
