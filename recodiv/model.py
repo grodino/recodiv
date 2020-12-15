@@ -111,7 +111,7 @@ def train_model(
     
 
 def generate_predictions(model, user_item):
-    """Generate the rating predictions for the user for earch item"""
+    """Generate the rating predictions for each user->item pair"""
 
     return batch.predict(model, user_item)
      

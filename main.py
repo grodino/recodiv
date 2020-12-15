@@ -18,10 +18,6 @@ def main():
     regularization_values = [.01, .02, .03, .04, .05, .1, .3, .5, .7, 1, 5]
     n_recommendations = [10, 30, 50, 100, 200, 500, 1_000]
 
-    n_factors_values = [400, 500, 1_000]
-    regularization_values = [ .05, .1, .3]
-    
-
     tasks = [
         DatasetInfo(dataset=msd_dataset),
         PlotUserVolumeHistogram(dataset=msd_dataset),
@@ -46,7 +42,7 @@ def main():
     # tasks = [DeleteAllModelFigures(dataset=msd_dataset),]
     # tasks = [CollectAllModelFigures(dataset=msd_dataset),]
 
-    luigi.build(tasks, local_scheduler=False, log_level='INFO', scheduler_host='127.0.0.1')
+    luigi.build(tasks, local_scheduler=True, log_level='INFO', scheduler_host='127.0.0.1')
 
 
 if __name__ == '__main__':

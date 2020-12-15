@@ -194,7 +194,7 @@ class BuildDatasetGraph(luigi.Task):
         graph = generate_graph(user_item, item_tag)
         graph.persist(self.output().path)
 
-        del graph
+        del graph, user_item, item_tag
 
 
 class DatasetInfo(luigi.Task):
@@ -280,7 +280,8 @@ class PlotUserVolumeHistogram(luigi.Task):
         ax.set_title('Histogram of user volume')
         
         figure.savefig(self.output().path, format='png', dpi=300)
-        del figure, ax
+        
+        del figure, ax, user_volume
 
 
 class ComputeUsersDiversities(luigi.Task):
@@ -341,7 +342,7 @@ class PlotUsersDiversitiesHistogram(luigi.Task):
         ax.set_title('Histogram of user diversity index')
         fig.savefig(self.output().path, format='png', dpi=300)
         
-        del fig, ax
+        del fig, ax, diversities
 
 
 class ComputeTagsDiversities(luigi.Task):
@@ -373,7 +374,7 @@ class ComputeTagsDiversities(luigi.Task):
             'diversity': list(diversities.values())
         }).to_csv(self.output().path, index=False)
 
-        del graph
+        del graph, diversities
 
 
 class PlotTagsDiversitiesHistogram(luigi.Task):
@@ -402,7 +403,7 @@ class PlotTagsDiversitiesHistogram(luigi.Task):
         ax.set_title('Histogram of tag diversity index')
         fig.savefig(self.output().path, format='png', dpi=300)
         
-        del fig, ax
+        del fig, ax, diversities
 
 
 ################################################################################
@@ -442,6 +443,8 @@ class GenerateTrainTest(luigi.Task):
 
         train.to_csv(self.output()['train'].path, index=False)
         test.to_csv(self.output()['test'].path, index=False)
+
+        del user_item, train, test
 
 # TODO : do all the dataset plots on the testing set
 
@@ -484,6 +487,8 @@ class TrainTestInfo(luigi.Task):
 
         with self.output().open('w') as file:
             json.dump(info, file, indent=4)
+
+        del train, test
 
 
 class TrainModel(luigi.Task):
@@ -562,6 +567,8 @@ class TrainModel(luigi.Task):
         if self.evaluate_iterations == True:
             metrics.to_csv(self.output()['training_metrics'].path)
 
+        del train, test, model, metrics
+
 # TODO: create a ModelInfo task
 
 class GeneratePredictions(luigi.Task):
@@ -623,6 +630,8 @@ class GeneratePredictions(luigi.Task):
             user_item,
         ).to_csv(self.output().path, index=False)
 
+        del user_item, model
+
 
 class ComputeUserRMSE(luigi.Task):
     """Compute the user prediction RMSE for each user in the test set"""
@@ -673,6 +682,8 @@ class ComputeUserRMSE(luigi.Task):
         predictions = pd.read_csv(self.input().path)
         evaluate_model_predictions(predictions).reset_index() \
             .to_csv(self.output().path, index=False)
+
+        del predictions
 
 
 class GenerateRecommendations(luigi.Task):
@@ -734,6 +745,8 @@ class GenerateRecommendations(luigi.Task):
             user_item,
             n_recommendations=self.n_recommendations,
         ).to_csv(self.output().path, index=False)
+
+        del user_item, model
 
 
 class EvaluateModel(luigi.Task):
@@ -831,6 +844,8 @@ class EvaluateModel(luigi.Task):
             indent=4
         )
 
+        del recommendations, test, missing, common, metrics
+
 
 class TuneModelHyperparameters(luigi.Task):
     """Evaluate a model on a hyperparameter grid and get the best combination
@@ -907,6 +922,8 @@ class TuneModelHyperparameters(luigi.Task):
         
         with open(self.output().path, 'w') as file:
             json.dump(optimal, file, indent=4)
+
+        del metrics
 
 
 class PlotModelTuning(luigi.Task):
@@ -989,7 +1006,8 @@ class PlotModelTuning(luigi.Task):
         ax.set_title('Model performance evaluation with NDCG')
 
         fig.savefig(self.output().path, format='png', dpi=300)
-        del fig, ax
+        
+        del fig, ax, metrics, metrics_matrix
 
 
 ################################################################################
@@ -1054,7 +1072,7 @@ class BuildRecommendationGraph(luigi.Task):
         graph = generate_graph(user_item,item_tag)
         graph.persist(self.output().path)
 
-        del graph
+        del graph, user_item
 
 
 class ComputeRecommendationUsersDiversities(luigi.Task):
@@ -1109,7 +1127,7 @@ class ComputeRecommendationUsersDiversities(luigi.Task):
             'diversity': list(diversities.values())
         }).to_csv(self.output().path, index=False)
 
-        del graph
+        del graph, diversities
 
 
 class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
@@ -1164,7 +1182,7 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         ax.set_title('Histogram of recommendations diversity index')
         fig.savefig(self.output().path, format='png', dpi=300)
         
-        del fig, ax
+        del fig, ax, diversities
 
 
 # TODO: think about the relative importance of the recommendations added to the
@@ -1236,7 +1254,7 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
         graph = generate_graph(user_item, item_tag, graph=graph)
         graph.persist(self.output().path)
 
-        del graph
+        del graph, user_item, item_tag
 
 
 class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
@@ -1355,6 +1373,8 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
 
         deltas.to_csv(self.output().path, index=False)
 
+        del original, deltas
+
 
 class PlotDiversitiesIncreaseHistogram(luigi.Task):
     """Plot the histogram of recommendations diversity for each user"""
@@ -1408,7 +1428,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         ax.set_title('Histogram of diversity increase due to recommendations')
         fig.savefig(self.output().path, format='png', dpi=300)
         
-        del fig, ax
+        del fig, ax, deltas
 
 # TODO : correlation between diversity increase and user diversity
 # TODO : correlation between recommendation diversity and user diversity (vs volume/latent factors)
@@ -1492,7 +1512,8 @@ class PlotDiversityVsLatentFactors(luigi.Task):
                 metrics = pd.concat((metrics, metric))
         
         metrics.set_index('n_factors', inplace=True)
-        metrics = metrics / metrics.loc[metrics.index[0]]
+        # metrics = metrics / metrics.loc[metrics.index[0]]
+        metrics = metrics - metrics.loc[metrics.index[0]]
 
         fig, ax1 = pl.subplots()        
 
@@ -1503,7 +1524,8 @@ class PlotDiversityVsLatentFactors(luigi.Task):
 
         ax2 = ax1.twinx()
         ax2.set_ylabel('metrics')
-        metrics_lines = metrics.plot(ax=ax2, legend=False, logy=True).get_lines()
+        # metrics_lines = metrics.plot(ax=ax2, legend=False, logy=True).get_lines()
+        metrics_lines = metrics.plot(ax=ax2, legend=False, logy=False).get_lines()
         
         # Obscure trick to have only one legend
         lines = [*div_line, ]
@@ -1518,6 +1540,8 @@ class PlotDiversityVsLatentFactors(luigi.Task):
         fig.tight_layout()
         pl.savefig(self.output().path, format='png', dpi=300)
         pl.close()
+
+        del metrics, mean_diversities, fig, ax1, ax2
 
 
 class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
@@ -1897,12 +1921,14 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
                 sum(diversities.values()) / len(diversities)
             )
 
-            del graph
+            del graph, diversities
         
         pd.DataFrame({
             'n_recommendations': self.n_recommendations_values,
             'diversity': mean_diversities
         }).to_csv(self.output().path, index=False)
+
+        del item_tag, recommendations
 
 
 class PlotDiversityVsRecommendationVolume(luigi.Task):
@@ -1958,6 +1984,8 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
 
         pl.savefig(self.output().path, format='png', dpi=300)
         pl.close()
+
+        del data
 
 
 ################################################################################
