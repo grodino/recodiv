@@ -15,6 +15,7 @@ from lenskit import crossfold as xf
 from lenskit.algorithms import als
 from lenskit.metrics.predict import rmse
 from lenskit.algorithms import Recommender
+from lenskit.algorithms.basic import TopN, Memorized
 
 
 from recodiv.utils import print_song_info
@@ -76,7 +77,7 @@ def train_model(
 
     # Encapsulate the model into a TopN recommender
     model = Recommender.adapt(
-        als.ImplicitMF(n_factors, iterations=n_iterations, progress=tqdm, method='lu')
+        als.ImplicitMF(n_factors, iterations=n_iterations, progress=tqdm, method='cg')
     )
     metrics = pd.DataFrame()
 
@@ -111,16 +112,34 @@ def train_model(
     
 
 def generate_predictions(model, user_item):
-    """Generate the rating predictions for each user->item pair"""
+    """Generate the rating predictions for each user->item pair
+    
+    :returns: pd.DataFrame. A dataframe with at least the columns 'user', 
+        'item', 'prediction' (the predicted scores)
+    """
 
     return batch.predict(model, user_item)
      
 
-# TODO: use the precomputed rating predictions
-def generate_recommendations(model, ratings, n_recommendations=50):
-    """Generate recommendations for a given model"""
+def generate_recommendations(ratings, predictions, n_recommendations=50):
+    """Generate recommendations for a given model
+    
+    :param ratings: pd.DataFrame with at least an 'item' column. This represents
+        the items that will be proposed to each user. The items must known by 
+        the  model therefore, ratings can be viewed as the training data
+    :param predictions: pd.DataFrame with at least 'user', 'item' and 
+        'prediction' columns. This represents the users for whom we will 
+        generate recommendations. This can be viewed as the test set.
+    """
 
-    users = ratings.user.unique()
+    scores = predictions[['user', 'item', 'prediction']].rename(
+        columns={'prediction': 'rating'}
+    )
+    users = predictions.user.unique()
+
+    predictor = Memorized(scores)
+    model = TopN(predictor)
+    model.fit(ratings)
 
     return batch.recommend(model, users, n_recommendations)
 

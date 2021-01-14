@@ -724,6 +724,14 @@ class GenerateRecommendations(luigi.Task):
                 regularization=self.model_regularization,
                 user_fraction=self.model_user_fraction,
                 evaluate_iterations=False
+            ),
+            'predictions': GeneratePredictions(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
             )
         }
 
@@ -737,16 +745,16 @@ class GenerateRecommendations(luigi.Task):
     def run(self):
         self.output().makedirs()
         
-        user_item = pd.read_csv(self.input()['data']['test'].path)
-        model = binpickle.load(self.input()['model']['model'].path)
+        ratings = pd.read_csv(self.input()['data']['train'].path)
+        predictions = pd.read_csv(self.input()['predictions'].path)
 
         generate_recommendations(
-            model, 
-            user_item,
+            ratings,
+            predictions,
             n_recommendations=self.n_recommendations,
         ).to_csv(self.output().path, index=False)
 
-        del user_item, model
+        del ratings, predictions
 
 
 class EvaluateModel(luigi.Task):
