@@ -76,7 +76,7 @@ def train_model(
 
     # Encapsulate the model into a TopN recommender
     model = Recommender.adapt(
-        als.ImplicitMF(n_factors, iterations=n_iterations, progress=tqdm)
+        als.ImplicitMF(n_factors, iterations=n_iterations, progress=tqdm, method='lu')
     )
     metrics = pd.DataFrame()
 
@@ -116,6 +116,7 @@ def generate_predictions(model, user_item):
     return batch.predict(model, user_item)
      
 
+# TODO: use the precomputed rating predictions
 def generate_recommendations(model, ratings, n_recommendations=50):
     """Generate recommendations for a given model"""
 

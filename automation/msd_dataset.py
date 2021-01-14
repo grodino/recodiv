@@ -56,7 +56,7 @@ class MsdDataset(Dataset):
     """The Million Songs Dataset class"""
 
     IMPORT_FOLDER = 'data/million_songs_dataset/'
-    NAME = 'MSD'
+    NAME = 'MSD-confidence-corrected'
 
     def __init__(self, *args, n_users=0,  **kwargs):
         super().__init__(*args, **kwargs)
@@ -89,7 +89,7 @@ class MsdDataset(Dataset):
                 'node2_level': np.int8,
                 'user': np.str,
                 'item': np.str,
-                'rating': np.int32
+                'rating': np.float32
             },
             # nrows=1_000_000,
             engine='c'
@@ -990,11 +990,11 @@ class PlotModelTuning(luigi.Task):
 
             metrics = pd.concat((metrics, metric))
 
-        metrics_matrix = metrics.pivot(index='n_factors', columns='regularization')['ndcg']
+        metrics_matrix = metrics.pivot(index='n_factors', columns='regularization')['rmse']
         
         metrics_matrix_n = metrics_matrix.to_numpy()
         opt_n_factors, opt_regularization = np.unravel_index(
-            metrics_matrix_n.flatten().argmax(),
+            metrics_matrix_n.flatten().argmin(),
             metrics_matrix_n.shape
         )
 
@@ -1012,7 +1012,7 @@ class PlotModelTuning(luigi.Task):
         ax.text(
             opt_regularization,
             opt_n_factors, 
-            'MAX', 
+            'MIN', 
             ha="center", 
             va="center", 
             color="w"
@@ -1020,7 +1020,7 @@ class PlotModelTuning(luigi.Task):
 
         ax.set_ylabel('Number of latent factors')
         ax.set_xlabel('Regularization coefficient')
-        ax.set_title('Model performance evaluation with NDCG')
+        ax.set_title('Model performance evaluation with RMSE')
 
         fig.savefig(self.output().path, format='png', dpi=300)
         
@@ -1496,6 +1496,7 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         ))
 
     def run(self):
+        self.output().makedirs()
         diversities = pd.read_csv(self.input()['user_diversity'].path)
         increase = pd.read_csv(self.input()['diversity_increase'].path).rename(columns={'diversity': 'increase'})
 
