@@ -68,7 +68,8 @@ def train_model(
         regularization=.1, 
         evaluate_iterations=False,
         iteration_metrics=None,
-        n_recommendations=50):
+        n_recommendations=50,
+        confidence_factor=40):
     """Train (and evaluate iterations if requested) model
     
     :returns: (model, iterations_metrics). If evaluate_iterations == False,
@@ -76,9 +77,17 @@ def train_model(
     """
 
     # Encapsulate the model into a TopN recommender
-    model = Recommender.adapt(
-        als.ImplicitMF(n_factors, iterations=n_iterations, progress=tqdm, method='cg')
-    )
+    model = Recommender.adapt(als.ImplicitMF(
+        n_factors, 
+        iterations=n_iterations, 
+        weight=confidence_factor, 
+        progress=tqdm, 
+        method='cg'
+    ))
+
+    # Compute the confidence values for user-item pairs
+    train['rating'] = 1 + confidence_factor * train['rating']
+    
     metrics = pd.DataFrame()
 
     if evaluate_iterations:
@@ -155,7 +164,7 @@ def evaluate_model_loss(model, predictions):
     # (ie the items not in train set)
     predictions = predictions[predictions['prediction'].notna()]
 
-    confidence = predictions['rating'].to_numpy()
+    confidence = 1 + model.predictor.weight * predictions['rating'].to_numpy()
     prediction = predictions['prediction'].to_numpy()
 
     reg = model.predictor.reg * (

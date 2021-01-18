@@ -507,6 +507,9 @@ class TrainModel(luigi.Task):
     regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
+    confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
     
     user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
@@ -556,6 +559,7 @@ class TrainModel(luigi.Task):
             test,
             n_factors=self.n_factors, 
             n_iterations=self.n_iterations, 
+            confidence_factor=self.confidence_factor,
             regularization=self.regularization, 
             evaluate_iterations=self.evaluate_iterations,
             iteration_metrics=self.iteration_metrics,
