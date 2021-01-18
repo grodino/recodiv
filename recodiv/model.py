@@ -121,25 +121,11 @@ def generate_predictions(model, user_item):
     return batch.predict(model, user_item)
      
 
-def generate_recommendations(ratings, predictions, n_recommendations=50):
+def generate_recommendations(model, test_ratings, n_recommendations=50):
     """Generate recommendations for a given model
-    
-    :param ratings: pd.DataFrame with at least an 'item' column. This represents
-        the items that will be proposed to each user. The items must known by 
-        the  model therefore, ratings can be viewed as the training data
-    :param predictions: pd.DataFrame with at least 'user', 'item' and 
-        'prediction' columns. This represents the users for whom we will 
-        generate recommendations. This can be viewed as the test set.
     """
 
-    scores = predictions[['user', 'item', 'prediction']].rename(
-        columns={'prediction': 'rating'}
-    )
-    users = predictions.user.unique()
-
-    predictor = Memorized(scores)
-    model = TopN(predictor)
-    model.fit(ratings)
+    users = test_ratings.user.unique()
 
     return batch.recommend(model, users, n_recommendations)
 
@@ -163,19 +149,18 @@ def evaluate_model_recommendations(recommendations, test, metrics):
     return analysis.compute(recommendations, test)
 
 
-def evaluate_model_predictions(pairs):
-    """Evaluates a model predictions via RMSE
+def evaluate_model_loss(model, predictions):
 
-    Computes the mean of (pairs['rating'] - pairs['prediction'])**2 for user in
-    predictions 
+    # do not consider the user-item pairs where no prediction could be generated
+    # (ie the items not in train set)
+    predictions = predictions[predictions['prediction'].notna()]
 
-    :param pairs: pd.DataFrame with at least the following columns: 'user,
-        'item', 'prediction', 'rating'
+    confidence = predictions['rating'].to_numpy()
+    prediction = predictions['prediction'].to_numpy()
 
-    :returns: pd.Series, the mean RMSE for each user
-    """
+    reg = model.predictor.reg * (
+        np.linalg.norm(model.predictor.user_features_, 'fro') \
+        + np.linalg.norm(model.predictor.item_features_, 'fro')
+    )
 
-    return pairs.groupby('user') \
-        .apply(lambda df: rmse(df.prediction, df.rating)) \
-        .rename('rmse')
-    
+    return confidence @ (1 - prediction)**2 + reg
