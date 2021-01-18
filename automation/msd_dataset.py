@@ -19,7 +19,7 @@ from recodiv.model import train_model
 from recodiv.model import split_dataset
 from recodiv.model import generate_predictions
 from recodiv.model import generate_recommendations
-from recodiv.model import evaluate_model_predictions
+from recodiv.model import evaluate_model_loss
 from recodiv.model import evaluate_model_recommendations
 from recodiv.triversity.graph import IndividualHerfindahlDiversities
 
@@ -571,121 +571,6 @@ class TrainModel(luigi.Task):
 
 # TODO: create a ModelInfo task
 
-class GeneratePredictions(luigi.Task):
-    """Compute the predicted rating values for the test set"""
-
-    dataset: Dataset = luigi.parameter.Parameter(
-        description='Instance of the Dataset class or subclasses'
-    )
-
-    model_n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-    
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
-    n_recommendations = luigi.parameter.IntParameter(
-        default=50, description='Number of recommendation to generate per user'
-    )
-
-    def requires(self):
-        return {
-            'data': GenerateTrainTest(
-                dataset=self.dataset,
-                user_fraction=self.model_user_fraction
-            ),
-            'model': TrainModel(
-                dataset=self.dataset,
-                n_iterations=self.model_n_iterations, 
-                n_factors=self.model_n_factors, 
-                regularization=self.model_regularization,
-                user_fraction=self.model_user_fraction,
-                evaluate_iterations=False
-            )
-        }
-
-    def output(self):
-        model = Path(self.input()['model']['model'].path).parent
-        
-        return luigi.LocalTarget(
-            model.joinpath(f'predictions-{self.n_recommendations}.csv')
-        )
-    
-    def run(self):
-        self.output().makedirs()
-        
-        user_item = pd.read_csv(self.input()['data']['test'].path)
-        model = binpickle.load(self.input()['model']['model'].path)
-
-        generate_predictions(
-            model, 
-            user_item,
-        ).to_csv(self.output().path, index=False)
-
-        del user_item, model
-
-
-class ComputeUserRMSE(luigi.Task):
-    """Compute the user prediction RMSE for each user in the test set"""
-
-    dataset: Dataset = luigi.parameter.Parameter(
-        description='Instance of the Dataset class or subclasses'
-    )
-
-    model_n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-    
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
-    n_recommendations = luigi.parameter.IntParameter(
-        default=50, description='Number of recommendation to generate per user'
-    )
-
-    def requires(self):
-        return GeneratePredictions(
-            dataset=self.dataset,
-            model_n_iterations=self.model_n_iterations,
-            model_n_factors=self.model_n_factors,
-            model_regularization=self.model_regularization,
-            model_user_fraction=self.model_user_fraction,
-            n_recommendations=self.n_recommendations
-        )
-    
-    def output(self):
-        model = Path(self.input().path).parent
-        
-        return luigi.LocalTarget(
-            model.joinpath(f'user_rmse.csv'),
-            format=Nop
-        )
-    
-    def run(self):
-        self.output().makedirs()
-
-        predictions = pd.read_csv(self.input().path)
-        evaluate_model_predictions(predictions).reset_index() \
-            .to_csv(self.output().path, index=False)
-
-        del predictions
-
-
 class GenerateRecommendations(luigi.Task):
     """Generate recommendations for users in test dataset with a given model"""
 
@@ -724,14 +609,6 @@ class GenerateRecommendations(luigi.Task):
                 regularization=self.model_regularization,
                 user_fraction=self.model_user_fraction,
                 evaluate_iterations=False
-            ),
-            'predictions': GeneratePredictions(
-                dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations
             )
         }
 
@@ -745,16 +622,93 @@ class GenerateRecommendations(luigi.Task):
     def run(self):
         self.output().makedirs()
         
-        ratings = pd.read_csv(self.input()['data']['train'].path)
-        predictions = pd.read_csv(self.input()['predictions'].path)
+        model = binpickle.load(self.input()['model']['model'].path)
+        ratings = pd.read_csv(self.input()['data']['test'].path)
 
         generate_recommendations(
+            model,
             ratings,
-            predictions,
-            n_recommendations=self.n_recommendations,
+            n_recommendations=self.n_recommendations
         ).to_csv(self.output().path, index=False)
 
-        del ratings, predictions
+        del ratings
+
+
+class GeneratePredictions(luigi.Task):
+    """Compute the predicted rating values for the user-item pairs in the test set"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    train_predictions = luigi.parameter.BoolParameter(
+        default=False, description='Whether or not to compute predictions for the train set'
+    )
+
+    def requires(self):
+        return {
+            'data': GenerateTrainTest(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction
+            ),
+            'model': TrainModel(
+                dataset=self.dataset,
+                n_iterations=self.model_n_iterations, 
+                n_factors=self.model_n_factors, 
+                regularization=self.model_regularization,
+                user_fraction=self.model_user_fraction,
+                evaluate_iterations=False
+            )
+        }
+
+    def output(self):
+        model = Path(self.input()['model']['model'].path).parent
+        
+        out = {}
+        out['test'] = luigi.LocalTarget(model.joinpath(f'test-predictions.csv'))
+        
+        if self.train_predictions:
+            out['train'] = luigi.LocalTarget(
+                model.joinpath(f'train-predictions.csv')
+            )
+
+        return out
+    
+    def run(self):
+        self.output()['test'].makedirs()
+        
+        test_user_item = pd.read_csv(self.input()['data']['test'].path)
+        model = binpickle.load(self.input()['model']['model'].path)
+
+        generate_predictions(
+            model, 
+            test_user_item,
+        ).to_csv(self.output()['test'].path, index=False)
+
+        if self.train_predictions:
+            train_user_item = pd.read_csv(self.input()['data']['train'].path)
+            generate_predictions(
+                model, 
+                train_user_item,
+            ).to_csv(self.output()['train'].path, index=False)
+
+            del train_user_item
+
+        del test_user_item, model
 
 
 class EvaluateModel(luigi.Task):
@@ -784,15 +738,15 @@ class EvaluateModel(luigi.Task):
 
     def requires(self):
         return {
-            'recommendations': GenerateRecommendations(
+            'predictions': GeneratePredictions(
                 dataset=self.dataset,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations
+                train_predictions=True
             ),
-            'user_rmse': ComputeUserRMSE(
+            'recommendations': GenerateRecommendations(
                 dataset=self.dataset,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
@@ -818,7 +772,8 @@ class EvaluateModel(luigi.Task):
         self.output().makedirs()
 
         recommendations = pd.read_csv(self.input()['recommendations'].path)
-        user_rmse = pd.read_csv(self.input()['user_rmse'].path)
+        test_predictions = pd.read_csv(self.input()['predictions']['test'].path)
+        train_predictions = pd.read_csv(self.input()['predictions']['train'].path)
         test = pd.read_csv(self.input()['dataset']['test'].path)
 
         # NOTE : Issue appears when the two following condition is met :
@@ -844,7 +799,8 @@ class EvaluateModel(luigi.Task):
             metrics_names
         )[metrics_names].mean()
 
-        metrics['rmse'] = user_rmse['rmse'].mean()
+        metrics['test_loss'] = evaluate_model_loss(test_predictions)
+        metrics['train_loss'] = evaluate_model_loss(train_predictions)
         
         metrics.to_json(
             self.output().path,
@@ -998,7 +954,7 @@ class PlotModelTuning(luigi.Task):
 
             metrics = pd.concat((metrics, metric))
 
-        metrics_matrix = metrics.pivot(index='n_factors', columns='regularization')['rmse']
+        metrics_matrix = metrics.pivot(index='n_factors', columns='regularization')['test_loss']
         
         metrics_matrix_n = metrics_matrix.to_numpy()
         opt_n_factors, opt_regularization = np.unravel_index(
@@ -1028,7 +984,7 @@ class PlotModelTuning(luigi.Task):
 
         ax.set_ylabel('Number of latent factors')
         ax.set_xlabel('Regularization coefficient')
-        ax.set_title('Model performance evaluation with RMSE')
+        ax.set_title('Model performance evaluation with test loss')
 
         fig.savefig(self.output().path, format='png', dpi=300)
         
