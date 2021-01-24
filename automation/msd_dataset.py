@@ -533,7 +533,7 @@ class TrainModel(luigi.Task):
 
     def output(self):
         model = self.dataset.base_folder.joinpath(
-            f'model-{self.n_iterations}it-{self.n_factors}f-{str(self.regularization).replace(".", "_")}reg/'
+            f'model-{self.n_iterations}it-{self.n_factors}f-{str(self.regularization).replace(".", "_")}reg-{int(self.confidence_factor)}c/'
         )
 
         out = {'model': luigi.LocalTarget(model.joinpath('model.bpk'))}
@@ -591,6 +591,9 @@ class GenerateRecommendations(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
     
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
@@ -612,7 +615,8 @@ class GenerateRecommendations(luigi.Task):
                 n_factors=self.model_n_factors, 
                 regularization=self.model_regularization,
                 user_fraction=self.model_user_fraction,
-                evaluate_iterations=False
+                evaluate_iterations=False,
+                confidence_factor=self.model_confidence_factor
             )
         }
 
@@ -654,6 +658,9 @@ class GeneratePredictions(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
     
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
@@ -675,7 +682,8 @@ class GeneratePredictions(luigi.Task):
                 n_factors=self.model_n_factors, 
                 regularization=self.model_regularization,
                 user_fraction=self.model_user_fraction,
-                evaluate_iterations=False
+                evaluate_iterations=False,
+                confidence_factor=self.model_confidence_factor
             )
         }
 
@@ -731,6 +739,9 @@ class EvaluateModel(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
     
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
@@ -748,7 +759,8 @@ class EvaluateModel(luigi.Task):
                 n_factors=self.model_n_factors, 
                 regularization=self.model_regularization,
                 user_fraction=self.model_user_fraction,
-                evaluate_iterations=False
+                evaluate_iterations=False,
+                confidence_factor=self.model_confidence_factor
             ),
             'predictions': GeneratePredictions(
                 dataset=self.dataset,
@@ -756,7 +768,8 @@ class EvaluateModel(luigi.Task):
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
-                train_predictions=True
+                train_predictions=True,
+                model_confidence_factor=self.model_confidence_factor
             ),
             'recommendations': GenerateRecommendations(
                 dataset=self.dataset,
@@ -764,7 +777,8 @@ class EvaluateModel(luigi.Task):
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations
+                n_recommendations=self.n_recommendations,
+                model_confidence_factor=self.model_confidence_factor
             ),
             'dataset': GenerateTrainTest(
                 dataset=self.dataset,
@@ -847,6 +861,9 @@ class TuneModelHyperparameters(luigi.Task):
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
 
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
@@ -867,7 +884,8 @@ class TuneModelHyperparameters(luigi.Task):
                 model_n_factors=n_factors,
                 model_regularization=regularization,
                 model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations
+                n_recommendations=self.n_recommendations,
+                model_confidence_factor=self.model_confidence_factor
             )
         
         return required
@@ -876,7 +894,7 @@ class TuneModelHyperparameters(luigi.Task):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
         
         return luigi.LocalTarget(
-            aggregated.joinpath(f'{self.model_n_factors_values}factors_{self.model_regularization_values}reg_{self.n_recommendations}reco_model_eval.json'),
+            aggregated.joinpath(f'{self.model_n_factors_values}factors_{self.model_regularization_values}reg_{self.n_recommendations}reco_{self.model_confidence_factor}c_model_eval.json'),
             format=Nop
         )
 
@@ -924,6 +942,16 @@ class PlotModelTuning(luigi.Task):
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
+
+    tuning_metric = luigi.parameter.Parameter(
+        default='test_loss', description='Wich metric to plot for each n_factors-regularization pair'
+    )
+    tuning_best = luigi.parameter.ChoiceParameter(
+        default='min', choices=['min', 'max'], description='Best value for the tuning metric greater is better or lower is better'
+    )
 
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
@@ -953,7 +981,10 @@ class PlotModelTuning(luigi.Task):
         aggregated = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
         
         return luigi.LocalTarget(
-            aggregated.joinpath(f'{self.model_n_factors_values}factors_{self.model_regularization_values}reg_{self.n_recommendations}reco_model_eval.png'),
+            aggregated.joinpath(
+                f'{self.model_n_factors_values}factors_{self.model_regularization_values}' \
+                    + f'reg_{self.n_recommendations}reco_{self.model_confidence_factor}' \
+                    + f'c_model_eval_{self.tuning_metric}.png'),
             format=Nop
         )
 
@@ -968,16 +999,10 @@ class PlotModelTuning(luigi.Task):
 
             metrics = pd.concat((metrics, metric))
 
-        metrics_matrix = metrics.pivot(index='n_factors', columns='regularization')['test_loss']
-        
+        metrics_matrix = metrics.pivot(index='n_factors', columns='regularization')[self.tuning_metric]
         metrics_matrix_n = metrics_matrix.to_numpy()
-        opt_n_factors, opt_regularization = np.unravel_index(
-            metrics_matrix_n.flatten().argmin(),
-            metrics_matrix_n.shape
-        )
 
         fig, ax = pl.subplots()
-
         img = ax.imshow(metrics_matrix_n)
         fig.colorbar(img)
 
@@ -987,18 +1012,34 @@ class PlotModelTuning(luigi.Task):
         ax.set_yticks([0,] + list(range(len(metrics_matrix.index))))
         ax.set_yticklabels(['A', ] + list(metrics_matrix.index))
 
+        # Display the best value        
+        if self.tuning_best == 'min':
+            opt_n_factors, opt_regularization = np.unravel_index(
+                metrics_matrix_n.flatten().argmin(),
+                metrics_matrix_n.shape
+            )
+            opt_text = 'MIN'
+            opt_color = 'white'
+        else:
+            opt_n_factors, opt_regularization = np.unravel_index(
+                metrics_matrix_n.flatten().argmax(),
+                metrics_matrix_n.shape
+            )
+            opt_text = 'MAX'
+            opt_color = 'black'
+
         ax.text(
             opt_regularization,
             opt_n_factors, 
-            'MIN', 
+            opt_text, 
             ha="center", 
             va="center", 
-            color="w"
+            color=opt_color
         )
 
         ax.set_ylabel('Number of latent factors')
         ax.set_xlabel('Regularization coefficient')
-        ax.set_title('Model performance evaluation with test loss')
+        ax.set_title(f'Model performance evaluation with {self.tuning_metric.replace("_", " ")}, $\\alpha = {self.model_confidence_factor}$')
 
         fig.savefig(self.output().path, format='png', dpi=300)
         
@@ -1492,6 +1533,7 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
 # TODO : correlation between diversity increase and user diversity
 # TODO : correlation between recommendation diversity and user diversity (vs volume/latent factors)
 # TODO : correlation between user RMSE and user recommendation diversity
+# TODO : diversity vs confidence factor ?
 
 ################################################################################
 # SPECIFIC EXPERIMENTS                                                         #
