@@ -8,42 +8,74 @@ from lenskit.util import log_to_stderr
 from automation.msd_dataset import *
 
 
-def main():
-    # log_to_stderr()
-    # os.environ['LK_NUM_PROCS'] = '10'
+def report_figures(msd_dataset):
+    CONFIDENCE_FACTOR = 40
+    N_ITERATIONS = 10
+    tasks = []
 
-    msd_dataset = MsdDataset(n_users=10_000)
-    # msd_dataset = MsdDataset(n_users=0)
-    n_factors_values = [30, 60, 100, 150, 200, 300, 400, 500, 1_000]
-    regularization_values = [.01, .02, .03, .04, .05, .1, .3, .5, .7, 1, 5]
-    n_recommendations = [10, 30, 50, 100, 200, 500, 1_000]
-
-    tasks = [
-        DatasetInfo(dataset=msd_dataset),
-        
-        PlotUserVolumeHistogram(dataset=msd_dataset),
-        PlotUsersDiversitiesHistogram(dataset=msd_dataset),
-        PlotTagsDiversitiesHistogram(dataset=msd_dataset),
-        BuildDatasetGraph(dataset=msd_dataset),
-        TrainTestInfo(dataset=msd_dataset),
-    ]
+    # General information about the dataset
     tasks += [
-        # PlotDiversityVsRecommendationVolume(dataset=msd_dataset, n_recommendations_values=n_recommendations),
-        PlotDiversityVsLatentFactors(dataset=msd_dataset, n_factors_values=n_factors_values),
-        # PlotDiversityIncreaseVsLatentFactors(dataset=msd_dataset, n_factors_values=n_factors_values),
-        # TuneModelHyperparameters(dataset=msd_dataset, model_n_factors_values=n_factors_values, model_regularization_values=regularization_values),
-        # PlotDiversityVsRegularization(dataset=msd_dataset, model_n_factors=100, model_regularization_values=regularization_values),
-        PlotModelTuning(dataset=msd_dataset, model_n_factors_values=n_factors_values, model_regularization_values=regularization_values),
-        # PlotDiversityIncreaseVsRegularization(dataset=msd_dataset, model_n_factors=100, model_regularization_values=regularization_values),
+        DatasetInfo(dataset=msd_dataset),
+        PlotUsersDiversitiesHistogram(dataset=msd_dataset)
     ]
-    # tasks += [PlotRecommendationsUsersDiversitiesHistogram(dataset=msd_dataset, model_n_factors=n) for n in n_factors_values]
-    # tasks += [PlotDiversitiesIncreaseHistogram(dataset=msd_dataset, model_n_factors=n) for n in n_factors_values]
-    # tasks += [EvaluateModel(dataset=msd_dataset, model_n_factors=n, model_n_iterations=30) for n in n_factors_values]
-    
-    # tasks = [DeleteAllModelFigures(dataset=msd_dataset),]
-    # tasks = [CollectAllModelFigures(dataset=msd_dataset),]
 
-    luigi.build(tasks, local_scheduler=True, log_level='INFO', scheduler_host='127.0.0.1')
+    # General information about the train and test sets
+    tasks += [
+        TrainTestInfo(dataset=msd_dataset),
+        PlotTrainTestUsersDiversitiesHistogram(dataset=msd_dataset)
+    ]
+
+    # Model convergence plot
+    tasks += [
+        PlotTrainLoss(
+            dataset=msd_dataset,
+            model_n_iterations=3*N_ITERATIONS,
+            model_n_factors=3_000,
+            model_regularization=float(1e6),
+            model_confidence_factor=CONFIDENCE_FACTOR
+        ),
+        PlotTrainLoss(
+            dataset=msd_dataset,
+            model_n_iterations=3*N_ITERATIONS,
+            model_n_factors=200,
+            model_regularization=float(1e-3),
+            model_confidence_factor=CONFIDENCE_FACTOR
+        )
+    ]
+
+    # Hyper parameter tuning
+    tasks += [
+        PlotModelTuning(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000, 3_000],
+            model_regularization_values=[.005, .001, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e6]
+            model_confidence_factor=CONFIDENCE_FACTOR,
+            tuning_metric='ndcg'
+            tuning_best='max',
+            n_recommendations=50
+        ),
+        PlotModelTuning(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000, 3_000],
+            model_regularization_values=[.005, .001, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e6]
+            model_confidence_factor=CONFIDENCE_FACTOR,
+            tuning_metric='test_loss'
+            tuning_best='min',
+            n_recommendations=50
+        )
+    ]
+
+    return tasks
+
+def main():
+    msd_dataset = MsdDataset(n_users=10_000)
+
+    tasks = []
+    tasks += report_figures(msd_dataset)
+
+    luigi.build(tasks, local_scheduler=False, log_level='INFO', scheduler_host='127.0.0.1')
 
 
 if __name__ == '__main__':
