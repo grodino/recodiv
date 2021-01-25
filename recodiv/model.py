@@ -148,3 +148,31 @@ def evaluate_model_loss(model, predictions):
     )
 
     return confidence @ (1 - prediction)**2 + reg
+
+
+def rank_to_weight(user_item, recommendations):
+    """Compute the weight associated to each recommendation for each user in 
+       recommendations
+
+    :param user_item: pd.DataFrame(columns=['user', 'item', 'rating']). All the
+        known user-item listenings counts
+    :param recommendations: pd.DataFrame(columns=['user', 'item', 'rank']). All
+        the recommendations made to each user in recommendations.
+
+    :returns:
+    """
+
+    n_recommendations = recommendations['rank'].max()
+    users = recommendations.user.unique()
+
+    # get the volume of the users in the recommendations DataFrame
+    user_volume = user_item.groupby('user')['rating'].sum()[users] \
+        .repeat(n_recommendations)
+
+    rank = recommendations.set_index('user')['rank']
+    weights = (2 / (n_recommendations * (n_recommendations - 1))) \
+        * user_volume * (n_recommendations - rank)
+
+    print(weights)
+
+    return weights

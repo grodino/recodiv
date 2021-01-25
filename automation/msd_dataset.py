@@ -18,6 +18,7 @@ from recodiv.utils import plot_histogram
 from recodiv.utils import generate_graph
 from recodiv.model import train_model
 from recodiv.model import split_dataset
+from recodiv.model import rank_to_weight
 from recodiv.model import generate_predictions
 from recodiv.model import generate_recommendations
 from recodiv.model import evaluate_model_loss
@@ -638,7 +639,6 @@ class PlotTrainTestUsersDiversitiesHistogram(luigi.Task):
         tikzplotlib.save(self.output()['test_tex'].path)
         
         del fig, ax, train_diversities, test_diversities
-
 
 
 class TrainModel(luigi.Task):
@@ -1323,15 +1323,19 @@ class BuildRecommendationGraph(luigi.Task):
         self.output().makedirs()
 
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
+        user_item = pd.read_csv(self.input()['dataset']['user_item'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
+        
+        weights = rank_to_weight(user_item, recommendations)
+        reco_user_item = recommendations[['user', 'item']].set_index('user')
+        reco_user_item['rating'] = weights
 
-        user_item = recommendations[['user', 'item', 'rank']]
-        user_item['rating'] = 1 / user_item['rank']
+        reco_user_item.reset_index(inplace=True)
 
-        graph = generate_graph(user_item,item_tag)
+        graph = generate_graph(reco_user_item, item_tag)
         graph.persist(self.output().path)
 
-        del graph, user_item
+        del graph, user_item, reco_user_item
 
 
 class ComputeRecommendationUsersDiversities(luigi.Task):
