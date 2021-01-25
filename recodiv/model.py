@@ -61,20 +61,13 @@ def split_dataset(ratings, user_fraction=.1):
 
 
 def train_model(
-        train, 
-        test, 
+        train,
         n_factors=30, 
         n_iterations=20, 
         regularization=.1, 
-        evaluate_iterations=False,
-        iteration_metrics=None,
-        n_recommendations=50,
+        save_training_loss=False,
         confidence_factor=40):
-    """Train (and evaluate iterations if requested) model
-    
-    :returns: (model, iterations_metrics). If evaluate_iterations == False,
-        metrics is an empty pd.DataFrame
-    """
+    """Train (and evaluate iterations if requested) model"""
 
     # Encapsulate the model into a TopN recommender
     model = Recommender.adapt(als.ImplicitMF(
@@ -88,36 +81,18 @@ def train_model(
     # Compute the confidence values for user-item pairs
     train['rating'] = 1 + confidence_factor * train['rating']
     
-    metrics = pd.DataFrame()
+    if save_training_loss:
+        loss = np.zeros(n_iterations)
 
-    if evaluate_iterations:
-        # Prepare metrics calculation
-        analysis = topn.RecListAnalysis()
-        users = test.user.unique()
-
-        for metric_name in iteration_metrics:
-            analysis.add_metric(METRICS[metric_name])
-
-        for iteration, intermediate_model in enumerate(model.fit_iters(train)):
-            # Create recommendations
-            recommendations = batch.recommend(intermediate_model, users, n_recommendations)
-
-            # Compute and save metrics
-            results = analysis.compute(recommendations, test)
-            results['iteration'] = iteration
-            metrics = pd.concat([metrics, results], ignore_index=True)
-        
-        metrics = metrics.groupby('iteration')[list(iteration_metrics)].mean()
-            
-        # metrics.plot(
-        #     logy=True, title='metrics with respect to iteration count'
-        # )
-        # pl.show()
+        for i, intermediate_model in enumerate(model.fit_iters(train)):
+            predictions = generate_predictions(intermediate_model, train)
+            loss[i] = evaluate_model_loss(intermediate_model, predictions)
 
     else:
         model.fit(train)
+        loss = None
     
-    return model, metrics
+    return model, loss
     
 
 def generate_predictions(model, user_item):
