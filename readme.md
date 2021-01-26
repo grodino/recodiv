@@ -11,7 +11,7 @@ computation... ) is located in `./automation/`.
 
 This project uses spotify's automation framework [luigi](https://github.com/spotify/luigi/)
 
-> Lauch luigi central scheduler : `luigid --background --pidfile .luigid/pidfile --logdir .luigid`
+> Lauch luigi central scheduler : `luigid --background --pidfile .luigi/pidfile --logdir .luigi`
 
 ### Choosing a recommenders systems library
 Even if choosing a library is not usually of particular interest in research article it is important for reproductibility purposes (see [Are We Really Making Much Progress?](http://arxiv.org/abs/1907.06902)). We explore in this section the existing libraries related to recommender systems.

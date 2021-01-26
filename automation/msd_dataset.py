@@ -135,9 +135,6 @@ class MsdDataset(Dataset):
         self.user_item = user_item
         self.item_tag = item_tag
 
-        del user_item
-        del item_tag
-
     def __str__(self):
         return self.NAME
 
@@ -1326,11 +1323,8 @@ class BuildRecommendationGraph(luigi.Task):
         user_item = pd.read_csv(self.input()['dataset']['user_item'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
         
-        weights = rank_to_weight(user_item, recommendations)
-        reco_user_item = recommendations[['user', 'item']].set_index('user')
-        reco_user_item['rating'] = weights
-
-        reco_user_item.reset_index(inplace=True)
+        reco_user_item = rank_to_weight(user_item, recommendations)[['user', 'item', 'weight']] \
+            .rename(columns={'weight': 'rating'})
 
         graph = generate_graph(reco_user_item, item_tag)
         graph.persist(self.output().path)
@@ -1508,16 +1502,20 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
         graph = IndividualHerfindahlDiversities.recall(
             self.input()['graph'].path
         )
+
+        user_item = pd.read_csv(self.input()['dataset']['user_item'].path)
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
+     
+        weights = rank_to_weight(user_item, recommendations)
+        reco_user_item = recommendations[['user', 'item']].set_index('user')
+        reco_user_item['rating'] = weights
 
-        user_item = recommendations[['user', 'item', 'rank']]
-        user_item['rating'] = 1 / user_item['rank']
-
-        graph = generate_graph(user_item, item_tag, graph=graph)
+        graph = generate_graph(reco_user_item, item_tag, graph=graph)
         graph.persist(self.output().path)
 
-        del graph, user_item, item_tag
+
+        del graph, user_item, item_tag, reco_user_item, weights
 
 
 class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):

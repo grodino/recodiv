@@ -159,20 +159,20 @@ def rank_to_weight(user_item, recommendations):
     :param recommendations: pd.DataFrame(columns=['user', 'item', 'rank']). All
         the recommendations made to each user in recommendations.
 
-    :returns:
+    :returns: the recommendations DataFrame with the column ['weight']
     """
 
-    n_recommendations = recommendations['rank'].max()
+    n_r = recommendations['rank'].max() # n_recommendations
     users = recommendations.user.unique()
+    n_users = users.shape[0]
 
     # get the volume of the users in the recommendations DataFrame
-    user_volume = user_item.groupby('user')['rating'].sum()[users] \
-        .repeat(n_recommendations)
+    user_volume = user_item.groupby('user')['rating'].sum()
 
-    rank = recommendations.set_index('user')['rank']
-    weights = (2 / (n_recommendations * (n_recommendations - 1))) \
-        * user_volume * (n_recommendations - rank)
+    def user_weights(x):
+        # x.name is the id of the user
+        return (2 * user_volume[x.name] / (n_r * (n_r - 1))) * (n_r - x)
 
-    print(weights)
+    recommendations['weight'] = recommendations.groupby('user')['rank'].transform(user_weights)
 
-    return weights
+    return recommendations
