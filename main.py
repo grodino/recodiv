@@ -11,6 +11,11 @@ from automation.msd_dataset import *
 def report_figures(msd_dataset):
     CONFIDENCE_FACTOR = 40
     N_ITERATIONS = 10
+    N_RECOMMENDATIONS = 50
+    # TODO: change these values when using the better dataset (not the confidence pre-corrected ...)
+    OPT_N_FACTORS = 500
+    OPT_REGULARIZATION = 5_000.0
+
     tasks = []
 
     # General information about the dataset
@@ -49,21 +54,32 @@ def report_figures(msd_dataset):
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
             model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000, 3_000],
-            model_regularization_values=[.005, .001, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e6]
+            model_regularization_values=[.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e6],
             model_confidence_factor=CONFIDENCE_FACTOR,
-            tuning_metric='ndcg'
+            tuning_metric='ndcg',
             tuning_best='max',
-            n_recommendations=50
+            n_recommendations=N_RECOMMENDATIONS
         ),
         PlotModelTuning(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
             model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000, 3_000],
-            model_regularization_values=[.005, .001, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e6]
+            model_regularization_values=[.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e6],
             model_confidence_factor=CONFIDENCE_FACTOR,
-            tuning_metric='test_loss'
+            tuning_metric='test_loss',
             tuning_best='min',
-            n_recommendations=50
+            n_recommendations=N_RECOMMENDATIONS
+        )
+    ]
+
+    # Recommendation diversity
+    tasks += [
+        PlotRecommendationsUsersDiversitiesHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
         )
     ]
 
