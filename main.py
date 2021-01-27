@@ -1,5 +1,5 @@
 import os
-os.environ['LK_NUM_PROCS'] = '20,2'
+# os.environ['LK_NUM_PROCS'] = '10,2'
 
 import luigi
 import numba
@@ -45,7 +45,7 @@ def report_figures(msd_dataset):
             model_n_factors=200,
             model_regularization=float(1e-3),
             model_confidence_factor=CONFIDENCE_FACTOR
-        )
+        ),
     ]
 
     # Hyper parameter tuning
@@ -53,8 +53,8 @@ def report_figures(msd_dataset):
         PlotModelTuning(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
-            model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000, 3_000],
-            model_regularization_values=[.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e6],
+            model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000,], # 3_000],
+            model_regularization_values=[.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e5, 1e6],
             model_confidence_factor=CONFIDENCE_FACTOR,
             tuning_metric='ndcg',
             tuning_best='max',
@@ -63,8 +63,8 @@ def report_figures(msd_dataset):
         PlotModelTuning(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
-            model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000, 3_000],
-            model_regularization_values=[.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e6],
+            model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000,], # 3_000],
+            model_regularization_values=[.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e5, 1e6],
             model_confidence_factor=CONFIDENCE_FACTOR,
             tuning_metric='test_loss',
             tuning_best='min',
@@ -72,7 +72,7 @@ def report_figures(msd_dataset):
         )
     ]
 
-    # Recommendation diversity
+    # Recommendation diversity at equilibrium (optimal parameters)
     tasks += [
         PlotRecommendationsUsersDiversitiesHistogram(
             dataset=msd_dataset,
@@ -80,6 +80,35 @@ def report_figures(msd_dataset):
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS
+        ),
+    ]
+    
+    # Recommendation diversity vs organic diversity at equilibrium
+    tasks += [
+        PlotUserDiversityIncreaseVsUserDiversity(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        PlotUserDiversityIncreaseVsUserDiversity(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=50,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+    ]
+
+    # Recommendation diversity vs recommendation volume at equilibrium
+    tasks += [
+        PlotDiversityVsRecommendationVolume(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations_values=[10, 20, 30, 40, 50, 75, 100, 150, 200, 500, 1000]   
         )
     ]
 
