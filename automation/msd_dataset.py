@@ -1266,10 +1266,6 @@ class PlotModelTuning(luigi.Task):
 ################################################################################
 # RECOMMENDATIONS ANALYSIS                                                     #
 ################################################################################
-# TODO : reflect on the values to give to edges of recommendations.
-# Ideas : 1/rank, max_rank - rank such that the number of reco listenings is 
-# equal to the user volume, prediction value for reco, 1 or 0 for listenings
-
 class BuildRecommendationGraph(luigi.Task):
     """Build the user-song-tag graph for the recommendations"""
 
@@ -1442,10 +1438,6 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         del fig, ax, diversities
 
 
-# TODO: think about the relative importance of the recommendations added to the
-# graph: what weight should we give them ? Idea: recontruct the graph of
-# listened songs with the scalar product of user->item factors rather than
-# number of listenings
 class BuildRecommendationsWithListeningsGraph(luigi.Task):
     """Consider the recommendations as all listened by the users and compute the
     corresponding diversity"""
@@ -1507,15 +1499,12 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
      
-        weights = rank_to_weight(user_item, recommendations)
-        reco_user_item = recommendations[['user', 'item']].set_index('user')
-        reco_user_item['rating'] = weights
-
+        reco_user_item = rank_to_weight(user_item, recommendations)[['user', 'item', 'weight']] \
+            .rename(columns={'weight': 'rating'})
         graph = generate_graph(reco_user_item, item_tag, graph=graph)
         graph.persist(self.output().path)
 
-
-        del graph, user_item, item_tag, reco_user_item, weights
+        del graph, user_item, item_tag, reco_user_item, recommendations
 
 
 class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
@@ -1720,6 +1709,7 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
 
     def requires(self):
         return {
+            'dataset': ImportDataset(dataset=self.dataset),
             'user_diversity': ComputeUsersDiversities(
                 dataset=self.dataset
             ),
@@ -1735,27 +1725,45 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
 
     def output(self):
         figures = Path(self.input()['diversity_increase'].path).parent.joinpath('figures')
-        return luigi.LocalTarget(figures.joinpath(
-            f'{self.n_recommendations}-recommendations_diversity_increase_vs_original_diversity.png'
-        ))
+        return {
+            'png': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations}-recommendations_diversity_increase_vs_original_diversity.png'
+            )),
+            'latex': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations}-recommendations_diversity_increase_vs_original_diversity.tex'
+            )),
+        }
 
     def run(self):
-        self.output().makedirs()
+        self.output()['png'].makedirs()
         diversities = pd.read_csv(self.input()['user_diversity'].path)
         increase = pd.read_csv(self.input()['diversity_increase'].path).rename(columns={'diversity': 'increase'})
 
+        # compute user volume
+        user_item = pd.read_csv(self.input()['dataset']['user_item'].path)
+        volume = user_item.groupby('user')['rating'].sum() \
+            .rename('volume')
+
         # inner join, only keep users for whom we calculated a diversity increase value
         merged = increase.merge(diversities, on='user')
+        merged = merged.merge(volume, on='user')
+        merged = merged[merged['increase'] != 0]
         
-        merged.plot.scatter(x='diversity', y='increase')
-        pl.title('User diversity before and after recomendations')
+        merged.plot.scatter(
+            x='diversity', 
+            y='increase', 
+            marker='+', 
+            c='volume', 
+            colormap='viridis'
+        )
+        pl.xlabel('"organic" diversity')
+        pl.ylabel('resulting diversity')
 
-        pl.savefig(self.output().path, format='png', dpi=300)
+        pl.savefig(self.output()['png'].path, format='png', dpi=300)
+        tikzplotlib.save(self.output()['latex'].path)
 
         del diversities, increase, merged
 
-
-# TODO : correlation between diversity increase and user diversity
 # TODO : correlation between recommendation diversity and user diversity (vs volume/latent factors)
 # TODO : correlation between user RMSE and user recommendation diversity
 # TODO : diversity vs confidence factor ?
@@ -2295,23 +2303,30 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
     
     def output(self):
         figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
-        return luigi.LocalTarget(figures.joinpath(
-            f'recommendations_diversity_vs_{self.n_recommendations_values}reco.png'
-        ))
+        return {
+            'png': luigi.LocalTarget(figures.joinpath(
+                f'recommendations_diversity_vs_{self.n_recommendations_values}reco.png'
+            )),
+            'latex': luigi.LocalTarget(figures.joinpath(
+                f'recommendations_diversity_vs_{self.n_recommendations_values}reco.tex'
+            ))
+        }
 
     def run(self):
-        self.output().makedirs()
+        self.output()['png'].makedirs()
         data = pd.read_csv(self.input().path)
 
         pl.plot(data['n_recommendations'], data['diversity'])
         pl.xlabel('Number of recommendations per user')
-        pl.ylabel('Mean user diversity')
-        pl.title('Evolution of diversity and recommendation volume')
+        pl.ylabel('diversity')
 
-        pl.savefig(self.output().path, format='png', dpi=300)
+        pl.savefig(self.output()['png'].path, format='png', dpi=300)
+        tikzplotlib.save(self.output()['latex'].path)
         pl.close()
 
         del data
+
+# TODO : plot "organic" + recommendation diversity vs volume
 
 
 ################################################################################
