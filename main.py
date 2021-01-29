@@ -12,6 +12,8 @@ def report_figures(msd_dataset):
     CONFIDENCE_FACTOR = 40
     N_ITERATIONS = 10
     N_RECOMMENDATIONS = 50
+    N_FACTORS_VALUES = [5, 20, 50, 60, 70, 80, 200, 500, 1_000, 3_000]
+    REGULARIZATION_VALUES = [.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e5, 1e6]
     # TODO: change these values when using the better dataset (not the confidence pre-corrected ...)
     OPT_N_FACTORS = 500
     OPT_REGULARIZATION = 5_000.0
@@ -53,8 +55,8 @@ def report_figures(msd_dataset):
         PlotModelTuning(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
-            model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000,], # 3_000],
-            model_regularization_values=[.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e5, 1e6],
+            model_n_factors_values=N_FACTORS_VALUES,
+            model_regularization_values=REGULARIZATION_VALUES,
             model_confidence_factor=CONFIDENCE_FACTOR,
             tuning_metric='ndcg',
             tuning_best='max',
@@ -63,7 +65,7 @@ def report_figures(msd_dataset):
         PlotModelTuning(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
-            model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000,], # 3_000],
+            model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000, 3_000],
             model_regularization_values=[.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e5, 1e6],
             model_confidence_factor=CONFIDENCE_FACTOR,
             tuning_metric='test_loss',
@@ -95,9 +97,16 @@ def report_figures(msd_dataset):
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
-            model_n_factors=50,
+            model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
+            n_recommendations=500
+        ),
+        PlotUserDiversityIncreaseVsUserDiversity(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10
         ),
     ]
 
@@ -111,6 +120,28 @@ def report_figures(msd_dataset):
             n_recommendations_values=[10, 20, 30, 40, 50, 75, 100, 150, 200, 500, 1000]   
         )
     ]
+
+    # Recommendation diversity vs organic diversity with less number of factors
+    tasks += [
+        PlotUserDiversityIncreaseVsUserDiversity(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=50,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+    ]
+
+    tasks += [
+        PlotDiversityIncreaseVsLatentFactors(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            n_factors_values=N_FACTORS_VALUES,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        )
+    ]
+
 
     return tasks
 

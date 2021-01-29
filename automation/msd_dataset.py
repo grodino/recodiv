@@ -1757,10 +1757,16 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
             colormap='viridis'
         )
         pl.xlabel('"organic" diversity')
-        pl.ylabel('resulting diversity')
+        pl.ylabel('diversity increase')
 
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
         tikzplotlib.save(self.output()['latex'].path)
+
+        # increased = merged[merged['increase'] > 0]
+        # item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
+
+        # pl.figure()
+        # pl.hist(increased['volume'])
 
         del diversities, increase, merged
 
