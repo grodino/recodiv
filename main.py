@@ -85,7 +85,7 @@ def report_figures(msd_dataset):
         ),
     ]
     
-    # Recommendation diversity vs organic diversity at equilibrium
+    # Recommendation diversity increase vs organic diversity at equilibrium
     tasks += [
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -110,6 +110,17 @@ def report_figures(msd_dataset):
         ),
     ]
 
+    # Recommendation diversity vs organic diversity at equilibrium
+    tasks += [
+        PlotRecommendationDiversityVsUserDiversity(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        )
+    ]
+
     # Recommendation diversity vs recommendation volume at equilibrium
     tasks += [
         PlotDiversityVsRecommendationVolume(
@@ -121,17 +132,7 @@ def report_figures(msd_dataset):
         )
     ]
 
-    # Recommendation diversity vs organic diversity with less number of factors
-    tasks += [
-        PlotUserDiversityIncreaseVsUserDiversity(
-            dataset=msd_dataset,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=50,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
-        ),
-    ]
-
+    # Diversity increase versus the number of latent factors used in the model
     tasks += [
         PlotDiversityIncreaseVsLatentFactors(
             dataset=msd_dataset,

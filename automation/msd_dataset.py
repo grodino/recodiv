@@ -11,6 +11,7 @@ import binpickle
 import tikzplotlib
 import numpy as np
 import pandas as pd
+from matplotlib import colors
 from matplotlib import pyplot as pl
 
 from recodiv.utils import dataset_info
@@ -1438,6 +1439,98 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         del fig, ax, diversities
 
 
+class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
+    """ Plot the diversity of the recommendations associated to each user with 
+        respect to the user diversity before recommendations"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return {
+            'dataset': ImportDataset(dataset=self.dataset),
+            'user_diversity': ComputeUsersDiversities(
+                dataset=self.dataset
+            ),
+            'recommendation_diversity': ComputeRecommendationUsersDiversities(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
+        }
+
+    def output(self):
+        figures = Path(self.input()['recommendation_diversity'].path).parent.joinpath('figures')
+        return {
+            'png': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations}-recommendations_diversity_vs_original_diversity.png'
+            )),
+            'latex': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations}-recommendations_diversity_vs_original_diversity.tex'
+            )),
+        }
+
+    def run(self):
+        self.output()['png'].makedirs()
+        diversities = pd.read_csv(self.input()['user_diversity'].path)
+        reco_diversities = pd.read_csv(
+            self.input()['recommendation_diversity'].path
+        ).rename(columns={'diversity': 'reco_diversity'})
+
+        # compute user volume
+        user_item = pd.read_csv(self.input()['dataset']['user_item'].path)
+        volume = user_item.groupby('user')['rating'].sum() \
+            .rename('volume')
+
+        # inner join, only keep users for whom we calculated a recommendation diversity value
+        merged = reco_diversities.merge(diversities, on='user')
+        merged = merged.merge(volume, on='user')
+        
+        merged.plot.scatter(
+            x='diversity', 
+            y='reco_diversity', 
+            marker='+', 
+            c='volume', 
+            colormap='viridis',
+            norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max())
+        )
+        pl.xlabel('"organic" diversity')
+        pl.ylabel('recommendation diversity')
+
+        pl.savefig(self.output()['png'].path, format='png', dpi=300)
+        tikzplotlib.save(self.output()['latex'].path)
+
+        # increased = merged[merged['increase'] > 0]
+        # item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
+
+        # pl.figure()
+        # pl.hist(increased['volume'])
+
+        del diversities, reco_diversities, merged
+
+
 class BuildRecommendationsWithListeningsGraph(luigi.Task):
     """Consider the recommendations as all listened by the users and compute the
     corresponding diversity"""
@@ -1681,6 +1774,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         del fig, ax, deltas
 
 
+# TODO : create animation of diversity increase vs organic diversity
 class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
     """Plot the user diversity increase with respect to the user diversity
        before recommendations"""
@@ -1754,7 +1848,8 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
             y='increase', 
             marker='+', 
             c='volume', 
-            colormap='viridis'
+            colormap='viridis',
+            norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max())
         )
         pl.xlabel('"organic" diversity')
         pl.ylabel('diversity increase')
