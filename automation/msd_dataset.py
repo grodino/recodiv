@@ -11,6 +11,7 @@ import binpickle
 import tikzplotlib
 import numpy as np
 import pandas as pd
+from graphviz import Digraph
 from matplotlib import colors
 from matplotlib import pyplot as pl
 
@@ -691,6 +692,7 @@ class TrainModel(luigi.Task):
         for out in self.output().values():
             out.makedirs()
 
+        # TODO : verify that this syntax works well with the now used dict input
         train_file, test_file = self.input()
 
         train = pd.read_csv(self.input()['train'].path)
@@ -711,6 +713,11 @@ class TrainModel(luigi.Task):
                 .to_csv(self.output()['train_loss'].path, index=False)
 
         del train, model, loss
+
+
+class TrainBaselines(luigi.Task):
+    """ Train baseline recommender models """
+    pass
 
 
 class PlotTrainLoss(luigi.Task):
@@ -1260,6 +1267,8 @@ class PlotModelTuning(luigi.Task):
 
         fig.savefig(self.output()['png'].path, format='png', dpi=300)
         tikzplotlib.save(self.output()['latex'].path)
+
+        pl.clf()
         
         del fig, ax, metrics, metrics_matrix
 
@@ -1522,6 +1531,8 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
         tikzplotlib.save(self.output()['latex'].path)
 
+        pl.clf()
+
         # increased = merged[merged['increase'] > 0]
         # item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
 
@@ -1710,7 +1721,7 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
         original = pd.read_csv(self.input()['original'].path) \
             .set_index('user')
 
-        deltas = (original['diversity'] - with_recommendations['diversity']) \
+        deltas = (with_recommendations['diversity'] - original['diversity']) \
             .dropna() \
             .reset_index()
 
@@ -1857,6 +1868,8 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
         tikzplotlib.save(self.output()['latex'].path)
 
+        pl.clf()
+
         # increased = merged[merged['increase'] > 0]
         # item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
 
@@ -1974,7 +1987,7 @@ class PlotDiversityVsLatentFactors(luigi.Task):
         pl.title('User diversity of recommendations')
         fig.tight_layout()
         pl.savefig(self.output().path, format='png', dpi=300)
-        pl.close()
+        pl.clf()
 
         del metrics, mean_diversities, fig, ax1, ax2
 
@@ -2079,7 +2092,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
         pl.title('User diversity increase after recommendations')
         fig.tight_layout()
         pl.savefig(self.output().path, format='png', dpi=300)
-        pl.close()
+        pl.clf()
 
 
 class PlotDiversityVsRegularization(luigi.Task):
@@ -2182,7 +2195,7 @@ class PlotDiversityVsRegularization(luigi.Task):
         pl.title('User diversity of recommendations')
         fig.tight_layout()
         pl.savefig(self.output().path, format='png', dpi=300)
-        pl.close()
+        pl.clf()
 
 
 class PlotDiversityIncreaseVsRegularization(luigi.Task):
@@ -2285,7 +2298,7 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
         pl.title('User diversity increase after recommendations')
         fig.tight_layout()
         pl.savefig(self.output().path, format='png', dpi=300)
-        pl.close()
+        pl.clf()
 
 
 class ComputeDiversityVsRecommendationVolume(luigi.Task):
@@ -2423,12 +2436,113 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
 
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
         tikzplotlib.save(self.output()['latex'].path)
-        pl.close()
+        pl.clf()
 
         del data
 
 # TODO : plot "organic" + recommendation diversity vs volume
 
+
+class AnalyseUser(luigi.Task):
+    """ Look at the items listened by a user, its diversity before and after 
+        recommendation etc... """
+    
+    user_id = luigi.parameter.Parameter(
+        description='The id string of the user'
+    )
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return {
+            'dataset': ImportDataset(dataset=self.dataset),
+            'train_test': GenerateTrainTest(
+                dataset=self.dataset, 
+                user_fraction=self.model_user_fraction
+            ),
+            'recommendations': GenerateRecommendations(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
+        }
+
+    def output(self):
+        model = Path(self.input()['recommendations'].path).parent
+        return luigi.LocalTarget(model.joinpath('info.json')) 
+
+    def run(self):
+        train = pd.read_csv(self.input()['train_test']['train'].path)
+        item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
+        recommendations = pd.read_csv(self.input()['recommendations'].path)
+
+        print(f'USER {self.user_id}')
+        info = {}
+
+        listened_items = train[train['user'] == self.user_id]
+        info['n_listened'] = len(listened_items)
+
+        tags = listened_items.merge(item_tag, how='left', on='item')
+        info['listened_tags'] = tags.tag.unique()
+
+        recommended_items = recommendations[recommendations['user'] == self.user_id]
+        recommended_tags = recommended_items.merge(item_tag, how='left', on='item')
+        info['recommended_tags'] = recommended_tags.tag.unique()
+        info['common_tags'] = np.intersect1d(recommended_tags.tag.unique(), tags.tag.unique())
+        
+        info['n_listened_tags'] = info['recommended_tags'].shape[0]
+        info['n_recommended_tags'] = info['recommended_tags'].shape[0]
+        info['n_common_tags'] = info['common_tags'].shape[0]
+
+        g = Digraph()
+        g.graph_attr['rankdir'] = 'BT'
+
+        # User-item edges
+        for i, edge in listened_items[['user', 'item', 'rating']].iterrows():
+            g.edge(self.user_id, edge['item'])
+
+        # Item-tag edges
+        for i, tag in tags[['item', 'tag', 'weight']].iterrows():
+            g.edge(tag['item'], tag['tag'])
+
+        # Recommended user-item edges
+        for i, edge in recommended_items[['user', 'item', 'score']].iterrows():
+            g.edge(self.user_id, edge['item'], color='blue')
+
+        # Recommended item-tag edges
+        for item, tags in recommended_tags[['item', 'tag', 'weight']].groupby('item'):
+            for i, tag in tags.iterrows():
+                g.edge(tag['item'], tag['tag'], color='blue')
+
+                # if i > 3 : break
+
+        with self.output().open('w') as file:
+            json.dump(info, file, indent=4)
+        
+        
 
 ################################################################################
 # UTILS                                                                        #
