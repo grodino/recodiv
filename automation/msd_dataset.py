@@ -1,7 +1,6 @@
 import json
 import time
 import shutil
-import pickle
 import logging
 from pathlib import Path
 
@@ -14,6 +13,14 @@ import pandas as pd
 from graphviz import Digraph
 from matplotlib import colors
 from matplotlib import pyplot as pl
+
+import dash
+import dash_core_components as dcc
+import dash_html_components as html
+from dash.dependencies import Input
+from dash.dependencies import Output
+import plotly.express as px
+import plotly.graph_objects as go
 
 from recodiv.utils import dataset_info
 from recodiv.utils import plot_histogram
@@ -2503,50 +2510,137 @@ class AnalyseUser(luigi.Task):
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
 
-        print(f'USER {self.user_id}')
         info = {}
 
         listened_items = train[train['user'] == self.user_id]
+        info['listened_items'] = list(listened_items['item'])
         info['n_listened'] = len(listened_items)
 
         tags = listened_items.merge(item_tag, how='left', on='item')
-        info['listened_tags'] = tags.tag.unique()
+        info['listened_tags'] = list(tags.tag.unique())
 
         recommended_items = recommendations[recommendations['user'] == self.user_id]
         recommended_tags = recommended_items.merge(item_tag, how='left', on='item')
-        info['recommended_tags'] = recommended_tags.tag.unique()
-        info['common_tags'] = np.intersect1d(recommended_tags.tag.unique(), tags.tag.unique())
+        info['recommended_tags'] = list(recommended_tags.tag.unique())
+        info['common_tags'] = list(np.intersect1d(recommended_tags.tag.unique(), tags.tag.unique()))
         
-        info['n_listened_tags'] = info['recommended_tags'].shape[0]
-        info['n_recommended_tags'] = info['recommended_tags'].shape[0]
-        info['n_common_tags'] = info['common_tags'].shape[0]
+        info['n_listened_tags'] = len(info['listened_tags'])
+        info['n_recommended_tags'] = len(info['recommended_tags'])
+        info['n_common_tags'] = len(info['common_tags'])
 
-        g = Digraph()
-        g.graph_attr['rankdir'] = 'BT'
+        # g = Digraph()
+        # g.graph_attr['rankdir'] = 'BT'
 
-        # User-item edges
-        for i, edge in listened_items[['user', 'item', 'rating']].iterrows():
-            g.edge(self.user_id, edge['item'])
+        # # User-item edges
+        # for i, edge in listened_items[['user', 'item', 'rating']].iterrows():
+        #     g.edge(self.user_id, edge['item'])
 
-        # Item-tag edges
-        for i, tag in tags[['item', 'tag', 'weight']].iterrows():
-            g.edge(tag['item'], tag['tag'])
+        # # Item-tag edges
+        # for i, tag in tags[['item', 'tag', 'weight']].iterrows():
+        #     g.edge(tag['item'], tag['tag'])
 
-        # Recommended user-item edges
-        for i, edge in recommended_items[['user', 'item', 'score']].iterrows():
-            g.edge(self.user_id, edge['item'], color='blue')
+        # # Recommended user-item edges
+        # for i, edge in recommended_items[['user', 'item', 'score']].iterrows():
+        #     g.edge(self.user_id, edge['item'], color='blue')
 
-        # Recommended item-tag edges
-        for item, tags in recommended_tags[['item', 'tag', 'weight']].groupby('item'):
-            for i, tag in tags.iterrows():
-                g.edge(tag['item'], tag['tag'], color='blue')
+        # # Recommended item-tag edges
+        # for item, tags in recommended_tags[['item', 'tag', 'weight']].groupby('item'):
+        #     for i, tag in tags.iterrows():
+        #         g.edge(tag['item'], tag['tag'], color='blue')
 
-                # if i > 3 : break
+        #         # if i > 3 : break
 
         with self.output().open('w') as file:
             json.dump(info, file, indent=4)
         
+        return info
         
+        
+################################################################################
+# INTERACTIVE PLOTTING                                                         #
+################################################################################
+class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
+    """ Interactive plot the diversity of the recommendations associated to each
+        user with respect to the user diversity before recommendations"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors_values = luigi.parameter.ListParameter(
+        description='Values of number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        req = {
+            'dataset': ImportDataset(dataset=self.dataset),
+            'user_diversity': ComputeUsersDiversities(
+                dataset=self.dataset
+            ),
+        }
+
+        for n_factors in self.model_n_factors_values:
+            req[f'{n_factors}-recommendation_diversity'] = ComputeRecommendationUsersDiversities(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            )
+        
+        return req
+
+    def output(self):
+        model = Path(self.input()['user_diversity'].path).parent
+        return luigi.LocalTarget(
+            model.joinpath(f'{self.n_recommendations}reco-{self.model_n_factors_values}facors-users_diversities.csv')
+        )
+
+    def run(self):
+        self.output().makedirs()
+
+        diversities = pd.read_csv(self.input()['user_diversity'].path)
+
+        # compute user volume
+        user_item = pd.read_csv(self.input()['dataset']['user_item'].path)
+        volume = np.log10(user_item.groupby('user')['rating'].sum()) \
+            .rename('volume')
+        
+        # Get the diversity values for the different number of factors
+        reco_diversities = []
+
+        for n_factors in self.model_n_factors_values:
+            divs = pd.read_csv(
+                self.input()[f'{n_factors}-recommendation_diversity'].path
+            ).rename(columns={'diversity': 'reco_diversity'})
+
+            divs['n_factors'] = n_factors
+            reco_diversities.append(divs)
+
+        reco_diversities: pd.DataFrame = pd.concat(reco_diversities, ignore_index=True)
+
+        # inner join, only keep users for whom we calculated a recommendation diversity value
+        merged = reco_diversities.merge(diversities, on='user')
+        merged = merged.merge(volume, on='user')
+        merged.to_csv(self.output().path)
+
+        return merged
+
 
 ################################################################################
 # UTILS                                                                        #
