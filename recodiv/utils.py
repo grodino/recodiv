@@ -12,7 +12,7 @@ def get_msd_song_info():
     hash in the MSD"""
 
     songs_info = {}
-    songs_file = Path('recodiv/data/million_songs_dataset/extra/unique_tracks.txt')
+    songs_file = Path('data/million_songs_dataset/extra/unique_tracks.txt')
 
     with open(songs_file, 'r', encoding='utf8') as file:
         for line in file.readlines():
@@ -21,7 +21,6 @@ def get_msd_song_info():
             songs_info[song_hash] = (artist, song_title)
 
     return songs_info
-
 
 def print_song_info(songs_ids, graph, songs_info):
     """Print song title artist and tags"""

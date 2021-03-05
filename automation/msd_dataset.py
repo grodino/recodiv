@@ -22,7 +22,7 @@ from dash.dependencies import Output
 import plotly.express as px
 import plotly.graph_objects as go
 
-from recodiv.utils import dataset_info
+from recodiv.utils import dataset_info, get_msd_song_info
 from recodiv.utils import plot_histogram
 from recodiv.utils import generate_graph
 from recodiv.model import train_model
@@ -2503,52 +2503,56 @@ class AnalyseUser(luigi.Task):
 
     def output(self):
         model = Path(self.input()['recommendations'].path).parent
-        return luigi.LocalTarget(model.joinpath('info.json')) 
+        return luigi.LocalTarget(model.joinpath(f'user_{self.user_id}-info.json')) 
 
     def run(self):
         train = pd.read_csv(self.input()['train_test']['train'].path)
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
+        song_info = get_msd_song_info()
 
-        info = {}
+        def track_id_to_dict(track_ids):
+            items = {}
 
+            for track_id in track_ids:
+                items[track_id] = {
+                    'artist': song_info[track_id][0], 
+                    'title': song_info[track_id][1],
+                }
+            
+            return items
+
+        info = {
+            'user_id': self.user_id,
+            'model_n_iterations': self.model_n_iterations,
+            'model_n_factors': self.model_n_factors,
+            'model_regularization': self.model_regularization,
+            'model_user_fraction': self.model_user_fraction,
+        }
+
+        # Listened items
         listened_items = train[train['user'] == self.user_id]
-        info['listened_items'] = list(listened_items['item'])
-        info['n_listened'] = len(listened_items)
+        info['listened_items'] = track_id_to_dict(listened_items['item'])
+        info['n_listened'] = len(info['listened_items'])
 
+        # Listened tags
         tags = listened_items.merge(item_tag, how='left', on='item')
         info['listened_tags'] = list(tags.tag.unique())
+        info['n_listened_tags'] = len(info['listened_tags'])
 
+        # Recommended items
         recommended_items = recommendations[recommendations['user'] == self.user_id]
+        info['recommended_items'] = track_id_to_dict(recommended_items['item'])
+        info['n_recommended_items'] = len(info['recommended_items'])
+
+        # Recommended tags
         recommended_tags = recommended_items.merge(item_tag, how='left', on='item')
         info['recommended_tags'] = list(recommended_tags.tag.unique())
-        info['common_tags'] = list(np.intersect1d(recommended_tags.tag.unique(), tags.tag.unique()))
-        
-        info['n_listened_tags'] = len(info['listened_tags'])
         info['n_recommended_tags'] = len(info['recommended_tags'])
+
+        # Intersection of recommended tags and listened tags
+        info['common_tags'] = list(np.intersect1d(recommended_tags.tag.unique(), tags.tag.unique()))
         info['n_common_tags'] = len(info['common_tags'])
-
-        # g = Digraph()
-        # g.graph_attr['rankdir'] = 'BT'
-
-        # # User-item edges
-        # for i, edge in listened_items[['user', 'item', 'rating']].iterrows():
-        #     g.edge(self.user_id, edge['item'])
-
-        # # Item-tag edges
-        # for i, tag in tags[['item', 'tag', 'weight']].iterrows():
-        #     g.edge(tag['item'], tag['tag'])
-
-        # # Recommended user-item edges
-        # for i, edge in recommended_items[['user', 'item', 'score']].iterrows():
-        #     g.edge(self.user_id, edge['item'], color='blue')
-
-        # # Recommended item-tag edges
-        # for item, tags in recommended_tags[['item', 'tag', 'weight']].groupby('item'):
-        #     for i, tag in tags.iterrows():
-        #         g.edge(tag['item'], tag['tag'], color='blue')
-
-        #         # if i > 3 : break
 
         with self.output().open('w') as file:
             json.dump(info, file, indent=4)
@@ -2606,14 +2610,13 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
         return req
 
     def output(self):
-        model = Path(self.input()['user_diversity'].path).parent
+        aggregated = self.dataset.base_folder.joinpath('aggregated')
         return luigi.LocalTarget(
-            model.joinpath(f'{self.n_recommendations}reco-{self.model_n_factors_values}facors-users_diversities.csv')
+            aggregated.joinpath(f'{self.n_recommendations}reco-{self.model_n_factors_values}factors-users_diversities.csv')
         )
 
     def run(self):
         self.output().makedirs()
-
         diversities = pd.read_csv(self.input()['user_diversity'].path)
 
         # compute user volume
