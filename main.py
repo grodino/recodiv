@@ -65,8 +65,8 @@ def report_figures(msd_dataset):
         PlotModelTuning(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
-            model_n_factors_values=[5, 20, 50, 60, 70, 80, 200, 500, 1_000, 3_000],
-            model_regularization_values=[.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e5, 1e6],
+            model_n_factors_values=N_FACTORS_VALUES,
+            model_regularization_values=REGULARIZATION_VALUES,
             model_confidence_factor=CONFIDENCE_FACTOR,
             tuning_metric='test_loss',
             tuning_best='min',
@@ -85,7 +85,7 @@ def report_figures(msd_dataset):
         ),
     ]
     
-    # Recommendation diversity increase vs organic diversity at equilibrium
+    # Recommendation diversity increase vs organic diversity at equilibrium and variations
     tasks += [
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -110,7 +110,7 @@ def report_figures(msd_dataset):
         ),
     ]
 
-    # Recommendation diversity vs organic diversity at equilibrium
+    # Recommendation diversity vs organic diversity at equilibrium and variations
     tasks += [
         PlotRecommendationDiversityVsUserDiversity(
             dataset=msd_dataset,
@@ -118,6 +118,20 @@ def report_figures(msd_dataset):
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS
+        ),
+        PlotRecommendationDiversityVsUserDiversity(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10
+        ),
+        PlotRecommendationDiversityVsUserDiversity(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500
         )
     ]
 
@@ -126,7 +140,7 @@ def report_figures(msd_dataset):
         PlotDiversityVsRecommendationVolume(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
+            n_factors_values=[5, 20, 500, 3_000],
             model_regularization=OPT_REGULARIZATION,
             n_recommendations_values=[10, 20, 30, 40, 50, 75, 100, 150, 200, 500, 1000]   
         )
@@ -142,6 +156,18 @@ def report_figures(msd_dataset):
             n_recommendations=N_RECOMMENDATIONS
         )
     ]
+
+    # # In depth analysis of outliers
+    # tasks += [
+    #     AnalyseUser(
+    #         user_id='8a3a852d85deaa9e568c810e67a9707a414a59f4',
+    #         dataset=msd_dataset,
+    #         model_n_iterations=N_ITERATIONS,
+    #         model_n_factors=OPT_N_FACTORS,
+    #         model_regularization=OPT_REGULARIZATION,
+    #         n_recommendations=N_RECOMMENDATIONS
+    #     )
+    # ]
 
 
     return tasks

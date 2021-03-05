@@ -1533,12 +1533,6 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
 
         pl.clf()
 
-        # increased = merged[merged['increase'] > 0]
-        # item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
-
-        # pl.figure()
-        # pl.hist(increased['volume'])
-
         del diversities, reco_diversities, merged
 
 
@@ -2343,7 +2337,7 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
         return luigi.LocalTarget(aggregated.joinpath(
-            f'recommendations_diversity_vs_{self.n_recommendations_values}reco.csv'
+            f'recommendations_diversity_vs_{self.n_recommendations_values}reco-{self.model_n_factors}factors.csv'
         ))
     
     def run(self):
@@ -2390,8 +2384,8 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
     model_n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
+    n_factors_values = luigi.parameter.ListParameter(
+        description='List of number of user/item latent factors'
     )
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
@@ -2406,33 +2400,43 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
     )
 
     def requires(self):
-        return ComputeDiversityVsRecommendationVolume(
-            dataset=self.dataset,
-            model_n_iterations=self.model_n_iterations,
-            model_n_factors=self.model_n_factors,
-            model_regularization=self.model_regularization,
-            model_user_fraction=self.model_user_fraction,
-            n_recommendations_values=self.n_recommendations_values
-        )
+        tasks = {}
+
+        for n_factors in self.n_factors_values:
+            tasks[n_factors] = ComputeDiversityVsRecommendationVolume(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations_values=self.n_recommendations_values
+            )
+        
+        return tasks
     
     def output(self):
         figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
         return {
             'png': luigi.LocalTarget(figures.joinpath(
-                f'recommendations_diversity_vs_{self.n_recommendations_values}reco.png'
+                f'recommendations_diversity_vs_{self.n_recommendations_values}reco-{self.n_factors_values}factors.png'
             )),
             'latex': luigi.LocalTarget(figures.joinpath(
-                f'recommendations_diversity_vs_{self.n_recommendations_values}reco.tex'
+                f'recommendations_diversity_vs_{self.n_recommendations_values}reco-{self.n_factors_values}factors.tex'
             ))
         }
 
     def run(self):
         self.output()['png'].makedirs()
-        data = pd.read_csv(self.input().path)
 
-        pl.plot(data['n_recommendations'], data['diversity'])
+        for n_factors, file in self.input().items():
+            data = pd.read_csv(file.path)
+
+            pl.semilogx(data['n_recommendations'], data['diversity'], label=f'{n_factors} factors')
+            # pl.plot(data['n_recommendations'], data['diversity'], label=f'{n_factors} factors')
+
         pl.xlabel('Number of recommendations per user')
         pl.ylabel('diversity')
+        pl.legend()
 
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
         tikzplotlib.save(self.output()['latex'].path)
