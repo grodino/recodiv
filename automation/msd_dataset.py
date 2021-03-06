@@ -14,14 +14,6 @@ from graphviz import Digraph
 from matplotlib import colors
 from matplotlib import pyplot as pl
 
-import dash
-import dash_core_components as dcc
-import dash_html_components as html
-from dash.dependencies import Input
-from dash.dependencies import Output
-import plotly.express as px
-import plotly.graph_objects as go
-
 from recodiv.utils import dataset_info, get_msd_song_info
 from recodiv.utils import plot_histogram
 from recodiv.utils import generate_graph
@@ -2564,8 +2556,9 @@ class AnalyseUser(luigi.Task):
 # INTERACTIVE PLOTTING                                                         #
 ################################################################################
 class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
-    """ Interactive plot the diversity of the recommendations associated to each
-        user with respect to the user diversity before recommendations"""
+    """Compute the diversity of the recommendations associated to each user with
+    respect to the user diversity before recommendations for different number of
+    factors"""
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
@@ -2633,6 +2626,89 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
             ).rename(columns={'diversity': 'reco_diversity'})
 
             divs['n_factors'] = n_factors
+            reco_diversities.append(divs)
+
+        reco_diversities: pd.DataFrame = pd.concat(reco_diversities, ignore_index=True)
+
+        # inner join, only keep users for whom we calculated a recommendation diversity value
+        merged = reco_diversities.merge(diversities, on='user')
+        merged = merged.merge(volume, on='user')
+        merged.to_csv(self.output().path)
+
+        return merged
+
+
+class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
+    """Compute the diversity of the recommendations associated to each user with
+    respect to the user diversity before recommendations for different number of
+    recommendations per user"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations_values = luigi.parameter.ListParameter(
+        description='List of number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        req = {
+            'dataset': ImportDataset(dataset=self.dataset),
+            'user_diversity': ComputeUsersDiversities(
+                dataset=self.dataset
+            ),
+        }
+
+        for n_recommendations in self.n_recommendations_values:
+            req[f'{n_recommendations}-recommendation_diversity'] = ComputeRecommendationUsersDiversities(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=n_recommendations
+            )
+        
+        return req
+
+    def output(self):
+        aggregated = self.dataset.base_folder.joinpath('aggregated')
+        return luigi.LocalTarget(
+            aggregated.joinpath(f'{self.n_recommendations_values}reco-{self.model_n_factors}factors-users_diversities.csv')
+        )
+
+    def run(self):
+        self.output().makedirs()
+        diversities = pd.read_csv(self.input()['user_diversity'].path)
+
+        # compute user volume
+        user_item = pd.read_csv(self.input()['dataset']['user_item'].path)
+        volume = np.log10(user_item.groupby('user')['rating'].sum()) \
+            .rename('volume')
+        
+        # Get the diversity values for the different number of factors
+        reco_diversities = []
+
+        for n_recommendations in self.n_recommendations_values:
+            divs = pd.read_csv(
+                self.input()[f'{n_recommendations}-recommendation_diversity'].path
+            ).rename(columns={'diversity': 'reco_diversity'})
+
+            divs['n_recommendations'] = n_recommendations
             reco_diversities.append(divs)
 
         reco_diversities: pd.DataFrame = pd.concat(reco_diversities, ignore_index=True)
