@@ -187,9 +187,20 @@ def interactive():
     default=False, 
     help='Use a luigi local scheduler for the tasks execution'
 )
-def latent_factors(local_scheduler):
+@click.option(
+    '--animated', 
+    type=click.Choice(['latent-factors', 'reco-volume']),
+    default='reco-volume', 
+    help='Choose the variable to change during the animation'
+)
+def recommendation_diversity(local_scheduler, animated):
     msd_dataset = MsdDataset(n_users=10_000)
-    reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler)
+
+    if animated == 'latent-factors':
+        reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler)
+    
+    elif animated == 'reco-volume':
+        reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler)
 
 
 @interactive.command()
@@ -198,9 +209,18 @@ def latent_factors(local_scheduler):
     default=False, 
     help='Use a luigi local scheduler for the tasks execution'
 )
-def recommendation_volume(local_scheduler):
+@click.option(
+    '--animated', 
+    type=click.Choice(['reco-volume']),
+    default='reco-volume', 
+    help='Choose the variable to change during the animation'
+)
+def diversity_increase(local_scheduler, animated):
     msd_dataset = MsdDataset(n_users=10_000)
-    reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler)
+
+    div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler)
+
+
 
 if __name__ == '__main__':
     cli()

@@ -1778,7 +1778,6 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         del fig, ax, deltas
 
 
-# TODO : create animation of diversity increase vs organic diversity
 class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
     """Plot the user diversity increase with respect to the user diversity
        before recommendations"""
@@ -2720,6 +2719,90 @@ class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
 
         return merged
 
+
+class ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(luigi.Task):
+    """Compute the diversity increase associated to each user with respect to
+    the user diversity before recommendations for different number of
+    recommendations per user"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations_values = luigi.parameter.ListParameter(
+        description='List of number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        req = {
+            'dataset': ImportDataset(dataset=self.dataset),
+            'user_diversity': ComputeUsersDiversities(
+                dataset=self.dataset
+            ),
+        }
+
+        for n_recommendations in self.n_recommendations_values:
+            req[f'{n_recommendations}-diversity_increase'] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=n_recommendations
+            )
+        
+        return req
+
+    def output(self):
+        aggregated = self.dataset.base_folder.joinpath('aggregated')
+        return luigi.LocalTarget(
+            aggregated.joinpath(f'{self.n_recommendations_values}reco-{self.model_n_factors}factors-diversity_increase.csv')
+        )
+
+    def run(self):
+        self.output().makedirs()
+        diversities = pd.read_csv(self.input()['user_diversity'].path)
+
+        # compute user volume
+        user_item = pd.read_csv(self.input()['dataset']['user_item'].path)
+        volume = np.log10(user_item.groupby('user')['rating'].sum()) \
+            .rename('volume')
+        
+        # Get the diversity values for the different number of factors
+        deltas = []
+
+        for n_recommendations in self.n_recommendations_values:
+            divs = pd.read_csv(
+                self.input()[f'{n_recommendations}-diversity_increase'].path
+            ).rename(columns={'diversity': 'diversity_increase'})
+
+            divs = divs[divs['diversity_increase'] != 0]
+
+            divs['n_recommendations'] = n_recommendations
+            deltas.append(divs)
+
+        deltas: pd.DataFrame = pd.concat(deltas, ignore_index=True)
+
+        # inner join, only keep users for whom we calculated a recommendation diversity value
+        merged = deltas.merge(diversities, on='user')
+        merged = merged.merge(volume, on='user')
+        merged.to_csv(self.output().path)
+
+        return merged
 
 ################################################################################
 # UTILS                                                                        #
