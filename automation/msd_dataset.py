@@ -61,9 +61,10 @@ class MsdDataset(Dataset):
     IMPORT_FOLDER = 'data/million_songs_dataset/'
     NAME = 'MSD-confidence-corrected'
 
-    def __init__(self, *args, n_users=0,  **kwargs):
+    def __init__(self, name, *args, n_users=0,  **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.NAME = name
         self.base_folder = GENERATED.joinpath(f'dataset-{self.NAME}')
         self.data_folder = self.base_folder.joinpath('data/')
         self.n_users = int(n_users)

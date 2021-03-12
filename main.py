@@ -10,17 +10,43 @@ from automation.msd_dataset import *
 
 
 @click.group()
-def cli():
-    pass
-
-@cli.command()
+@click.option(
+    '--n-users', 
+    default=10_000, 
+    type=int,
+    help='Number of users to sample from the datasest'
+)
 @click.option(
     '--local-scheduler', 
     default=False, 
+    type=bool,
     help='Use a luigi local scheduler for the tasks execution'
 )
-def report_figures(local_scheduler):
-    msd_dataset = MsdDataset(n_users=10_000)
+@click.option(
+    '--name',
+    default='MSD-10_000-users',
+    type=str,
+    help='The name of the folder where to save the experiments'
+)
+@click.pass_context
+def cli(context: click.Context, n_users, local_scheduler, name):
+    context.ensure_object(dict)
+
+    context.obj['n_users'] = n_users
+    context.obj['local_scheduler'] = local_scheduler
+    context.obj['name'] = name
+
+
+@cli.command()
+@click.pass_context
+def report_figures(context):
+    """Lauch luigi to generate the report figures"""
+
+    n_users = context.obj['n_users']
+    local_scheduler = context.obj['local_scheduler']
+    name = context.obj['name']
+
+    msd_dataset = MsdDataset(name, n_users=n_users)
 
     tasks = []
 
@@ -183,18 +209,18 @@ def interactive():
 
 @interactive.command()
 @click.option(
-    '--local-scheduler', 
-    default=False, 
-    help='Use a luigi local scheduler for the tasks execution'
-)
-@click.option(
     '--animated', 
     type=click.Choice(['latent-factors', 'reco-volume']),
     default='reco-volume', 
     help='Choose the variable to change during the animation'
 )
-def recommendation_diversity(local_scheduler, animated):
-    msd_dataset = MsdDataset(n_users=10_000)
+@click.pass_context
+def recommendation_diversity(context, animated):
+    n_users = context.obj['n_users']
+    local_scheduler = context.obj['local_scheduler']
+    name = context.obj['name']
+    
+    msd_dataset = MsdDataset(name, n_users=n_users)
 
     if animated == 'latent-factors':
         reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler)
@@ -205,22 +231,20 @@ def recommendation_diversity(local_scheduler, animated):
 
 @interactive.command()
 @click.option(
-    '--local-scheduler', 
-    default=False, 
-    help='Use a luigi local scheduler for the tasks execution'
-)
-@click.option(
     '--animated', 
     type=click.Choice(['reco-volume']),
     default='reco-volume', 
     help='Choose the variable to change during the animation'
 )
-def diversity_increase(local_scheduler, animated):
-    msd_dataset = MsdDataset(n_users=10_000)
+@click.pass_context
+def diversity_increase(context, animated):
+    n_users = context.obj['n_users']
+    local_scheduler = context.obj['local_scheduler']
+    name = context.obj['name']
+    msd_dataset = MsdDataset(name, n_users=n_users)
 
     div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler)
 
 
-
 if __name__ == '__main__':
-    cli()
+    cli(obj={})
