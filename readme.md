@@ -53,6 +53,32 @@ An index is computed overs an emprirical distribution; this is something biologi
 - In the selection phase, select items that would increase the number of tags reached and items that
   would balance all the categories reached
 
+### List of figures
+Here are all the figures that can be generated (listed as luigi tasks)
+
+Dataset analysis :
+- `PlotUserVolumeHistogram` : Histogram of the user volume (number of items listened per user). The whole dataset is taken into account
+- `PlotUsersDiversitiesHistogram` : Histogram of the user diversity (individual herfindal diversity from the user layer to the tag layer; also called *user attention diversity* or *organic diversity*)
+- `PlotTagsDiversitiesHistogram` : Histogram of the tag diversity (individual herfindal diversity from the tag layer to the user layer; also called *tag audience diversity*)
+
+Model training/evaluation :
+- `PlotTrainTestUsersDiversitiesHistogram` : Histogram of the *user attention diversity* computed separately on the train and test datasets
+- `PlotTrainLoss` : Value of the training loss for an increasing number of epochs
+- `PlotModelTuning` : Value of a given evaluation metric with respect to the number of latent factors and the regularization value, displayed as a 2D image.
+
+Recommendation analysis
+- `PlotRecommendationsUsersDiversitiesHistogram` : Histogram of the *user recommendation diversity* (the individua herfindal diversity of a user with the user-items edges representing user-recommendation links)
+- `PlotDiversitiesIncreaseHistogram` : Histogram of the *user diversity increase* (the individual herfindal diversity of a user after recommendations are added to its user-items-tags graph minus its *organic diversity*)
+- `PlotRecommendationDiversityVsUserDiversity` : Each *user recommendation diversity* with respect to its *organic diversity*
+- `PlotUserDiversityIncreaseVsUserDiversity` : Each *user diversity increase* with respect to its *organic diversity*
+
+Hyperparameters analysis
+- `PlotDiversityVsLatentFactors` : The average *user recommendation diversity* for different number of latent factors in the trained model
+- `PlotDiversityIncreaseVsLatentFactors` : The average *user diversity increase*  for different number of latent factors in the trained model
+- `PlotDiversityVsRegularization` : The average *user recommendation diversity* for different number of regularization factor in the trained model
+- `PlotDiversityIncreaseVsRegularization` : The average *user diversity increase* for different number of regularization factor in the trained model
+- `PlotDiversityVsRecommendationVolume` : The average *user recommendation diversity* for different number of recommended items per user.
+
 
 ## Licences
 * The code in `recodiv/triversity/` is adapted from [triversity](https://github.com/Nobody35/triversity)
