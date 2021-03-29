@@ -53,7 +53,9 @@ def report_figures(context):
     # General information about the dataset
     tasks += [
         DatasetInfo(dataset=msd_dataset),
-        PlotUsersDiversitiesHistogram(dataset=msd_dataset)
+        PlotUsersDiversitiesHistogram(dataset=msd_dataset),
+        PlotUserVolumeHistogram(dataset=msd_dataset),
+        PlotTagsDiversitiesHistogram(dataset=msd_dataset),
     ]
 
     # General information about the train and test sets
@@ -66,7 +68,7 @@ def report_figures(context):
     tasks += [
         PlotTrainLoss(
             dataset=msd_dataset,
-            model_n_iterations=3*N_ITERATIONS,
+            model_n_iterations=2*N_ITERATIONS,
             model_n_factors=3_000,
             model_regularization=float(1e6),
             model_confidence_factor=CONFIDENCE_FACTOR
@@ -101,7 +103,17 @@ def report_figures(context):
             tuning_metric='test_loss',
             tuning_best='min',
             n_recommendations=N_RECOMMENDATIONS
-        )
+        ),
+        PlotModelTuning(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors_values=N_FACTORS_VALUES,
+            model_regularization_values=REGULARIZATION_VALUES,
+            model_confidence_factor=CONFIDENCE_FACTOR,
+            tuning_metric='train_loss',
+            tuning_best='min',
+            n_recommendations=N_RECOMMENDATIONS
+        ),
     ]
 
     # Recommendation diversity at equilibrium (optimal parameters)
@@ -113,6 +125,13 @@ def report_figures(context):
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS
         ),
+        PlotDiversitiesIncreaseHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        )
     ]
     
     # Recommendation diversity increase vs organic diversity at equilibrium and variations
@@ -140,7 +159,7 @@ def report_figures(context):
         ),
     ]
 
-    # Recommendation diversity vs organic diversity at equilibrium and variations
+    # # Recommendation diversity vs organic diversity at equilibrium and variations
     tasks += [
         PlotRecommendationDiversityVsUserDiversity(
             dataset=msd_dataset,
@@ -176,6 +195,17 @@ def report_figures(context):
         )
     ]
 
+    # Recommendation diversity versus the number of latent factors used in the model
+    tasks += [
+        PlotDiversityVsLatentFactors(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            n_factors_values=N_FACTORS_VALUES,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        )
+    ]
+
     # Diversity increase versus the number of latent factors used in the model
     tasks += [
         PlotDiversityIncreaseVsLatentFactors(
@@ -187,17 +217,6 @@ def report_figures(context):
         )
     ]
 
-    # # In depth analysis of outliers
-    # tasks += [
-    #     AnalyseUser(
-    #         user_id='8a3a852d85deaa9e568c810e67a9707a414a59f4',
-    #         dataset=msd_dataset,
-    #         model_n_iterations=N_ITERATIONS,
-    #         model_n_factors=OPT_N_FACTORS,
-    #         model_regularization=OPT_REGULARIZATION,
-    #         n_recommendations=N_RECOMMENDATIONS
-    #     )
-    # ]
 
     luigi.build(tasks, local_scheduler=local_scheduler, log_level='INFO', scheduler_host='127.0.0.1')
 
