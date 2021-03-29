@@ -218,7 +218,7 @@ class NPartiteGraph:
         print('Done')
 
     @classmethod
-    def recall(cls, file_path):
+    def recall(cls, file_path) -> 'NPartiteGraph':
         """Recreates a graph from a pickled one. WARNING only unpickle files you
         trust !
 
@@ -450,6 +450,22 @@ class NPartiteGraph:
         self.res[path] = res
 
         return res
+
+    def spread_node(self, node_hash, path):
+        """Compute the distributions of reached nodes in the layer path[-1] for
+        a single node in the layer path[0] through the given layers layer[1: -1]
+        
+        :param node_hash: the "name" of the node to compute 
+        :param path: the ids of the sets ("layers") to be traversed (in given order) by the spread.
+        
+        :returns: The reached node distribution
+        """
+        node_id = self.ids[path[0]][node_hash]
+        neighbors = self.graphs[path[0]][path[1]][node_id]
+
+        distribution = self._spread_path(neighbors, path[1:])
+
+        return {self.revids[path[-1]][node_id]: value for node_id, value in distribution.items()}
 
     def id_to_hash(self, ids, set_id):
         """Converts an id or iterable of ids into a hash or list of hashes
