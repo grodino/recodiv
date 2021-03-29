@@ -1,4 +1,5 @@
 import json
+from dash_core_components.Graph import Graph
 
 import luigi
 import dash
@@ -44,8 +45,6 @@ def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
         custom_data=['n_factors'],
         animation_frame='n_factors',
         animation_group='user',
-        marginal_x='histogram',
-        marginal_y='histogram',
         color='volume', 
         color_continuous_scale=px.colors.sequential.Viridis,
         width=float('inf'),
@@ -62,47 +61,108 @@ def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
         tickvals=[1, 1.477, 2, 2.477, 3],
         ticktext=['10', '30', '100', '300', '1000'],
     ))
-    
+
     app = dash.Dash()
     app.layout = html.Div([
-        dcc.Graph(
-            id='basic-interactions',
-            figure=fig
-        ),
-
-        html.Div(className='row', children=[
+        # Graphs container
+        html.Div([
             html.Div([
-                dcc.Markdown("""
-                    **Click Data**
+                dcc.Graph(
+                    id='basic-interactions',
+                    figure=fig
+                ),
+            ], style={'width': '50%'}),
 
-                    Click on points in the graph.
-                """),
-                html.Pre(id='click-data'),
-            ], className='three columns'),
+            html.Div([
+                dcc.Graph(id='listened-tag-distribution'),
+                dcc.Graph(id='recommended-tag-distribution'),
+            ], style={'width': '50%'})
+
+        ], style={'display': 'flex'}),
+        
+        # Data container
+        html.Div([
+            dcc.Markdown("""
+                **Click Data**
+
+                Click on points in the graph.
+            """),
+            html.Pre(id='click-data'),
         ]),
     ])
 
-    @app.callback(
+    @app.callback([
         Output('click-data', 'children'),
+        Output('listened-tag-distribution', 'figure'),
+        Output('recommended-tag-distribution', 'figure')
+    ],
         Input('basic-interactions', 'clickData'))
-    def display_click_data(click_data):
-        if not click_data:
-            return
+    def handle_click_data(click_data):
+        if click_data:
+            point = click_data['points'][0]
+            user_id = point['id']
+            n_factors = int(point['customdata'][0])
 
-        point = click_data['points'][0]
-        user_id = point['id']
-        n_factors = int(point['customdata'][0])
+            user_info = AnalyseUser(
+                user_id=user_id,
+                dataset=msd_dataset,
+                model_n_iterations=n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=regularization,
+                n_recommendations=n_recommendations
+            ).run()
 
-        user_info = AnalyseUser(
-            user_id=user_id,
-            dataset=msd_dataset,
-            model_n_iterations=n_iterations,
-            model_n_factors=n_factors,
-            model_regularization=regularization,
-            n_recommendations=n_recommendations
-        ).run()
+            user_info, listened_tag_distribution, recommended_tag_distribution = AnalyseUser(
+                user_id=user_id,
+                dataset=msd_dataset,
+                model_n_iterations=n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=regularization,
+                n_recommendations=n_recommendations
+            ).run()
 
-        return json.dumps(user_info, indent=2)
+            # reorder the dict for better readability in the webpage
+            keys = [
+                'user_id',
+                'model_n_iterations',
+                'model_n_factors',
+                'model_regularization',
+                'model_user_fraction',
+                'n_listened',
+                'n_listened_tags',
+                'n_recommended_items',
+                'n_recommended_tags',
+                'n_common_tags',
+                'listened_items',
+                'listened_tags',
+                'recommended_items',
+                'recommended_tags',
+                'common_tags'
+            ]
+            user_info = {key: user_info[key] for key in keys}
+            
+            listened_tags_fig = px.bar(
+                listened_tag_distribution,
+                title='Listened tags weight distribution',
+                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+            )
+            listened_tags_fig.update_xaxes(range=[0, 30])
+            listened_tags_fig.update_layout(xaxis_tickangle=45)
+
+            recommended_tags_fig = px.bar(
+                recommended_tag_distribution,
+                title='Recommended tags weight distribution',
+                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+            )
+            recommended_tags_fig.update_xaxes(range=[0, 30])
+            recommended_tags_fig.update_layout(xaxis_tickangle=45)
+        
+        else:
+            user_info = {}
+            listened_tags_fig = px.bar(title='Listened tags weight distribution')
+            recommended_tags_fig = px.bar(title='Recommended tags weight distribution')
+
+        return json.dumps(user_info, indent=2), listened_tags_fig, recommended_tags_fig
 
     app.run_server(debug=True, use_reloader=False)
 
@@ -137,8 +197,8 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
         custom_data=['n_recommendations'],
         animation_frame='n_recommendations',
         animation_group='user',
-        marginal_x='histogram',
-        marginal_y='histogram',
+        # marginal_x='histogram',
+        # marginal_y='histogram',
         color='volume', 
         color_continuous_scale=px.colors.sequential.Viridis,
         width=float('inf'),
@@ -158,64 +218,96 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
     
     app = dash.Dash()
     app.layout = html.Div([
-        dcc.Graph(
-            id='basic-interactions',
-            figure=fig
-        ),
-
-        html.Div(className='row', children=[
+        # Graphs container
+        html.Div([
             html.Div([
-                dcc.Markdown("""
-                    **Click Data**
+                dcc.Graph(
+                    id='basic-interactions',
+                    figure=fig
+                ),
+            ], style={'width': '50%'}),
 
-                    Click on points in the graph.
-                """),
-                html.Pre(id='click-data'),
-            ], className='three columns'),
+            html.Div([
+                dcc.Graph(id='listened-tag-distribution'),
+                dcc.Graph(id='recommended-tag-distribution'),
+            ], style={'width': '50%'})
+
+        ], style={'display': 'flex'}),
+        
+        # Data container
+        html.Div([
+            dcc.Markdown("""
+                **Click Data**
+
+                Click on points in the graph.
+            """),
+            html.Pre(id='click-data'),
         ]),
     ])
 
-    @app.callback(
+    @app.callback([
         Output('click-data', 'children'),
+        Output('listened-tag-distribution', 'figure'),
+        Output('recommended-tag-distribution', 'figure')
+    ],
         Input('basic-interactions', 'clickData'))
-    def display_click_data(click_data):
-        if not click_data:
-            return
+    def handle_click_data(click_data):
+        if click_data:
+            point = click_data['points'][0]
+            user_id = point['id']
+            n_recommendations = int(point['customdata'][0])
 
-        point = click_data['points'][0]
-        user_id = point['id']
-        n_recommendations = int(point['customdata'][0])
+            user_info, listened_tag_distribution, recommended_tag_distribution = AnalyseUser(
+                user_id=user_id,
+                dataset=msd_dataset,
+                model_n_iterations=n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=regularization,
+                n_recommendations=n_recommendations
+            ).run()
 
-        user_info = AnalyseUser(
-            user_id=user_id,
-            dataset=msd_dataset,
-            model_n_iterations=n_iterations,
-            model_n_factors=n_factors,
-            model_regularization=regularization,
-            n_recommendations=n_recommendations
-        ).run()
+            # reorder the dict for better readability in the webpage
+            keys = [
+                'user_id',
+                'model_n_iterations',
+                'model_n_factors',
+                'model_regularization',
+                'model_user_fraction',
+                'n_listened',
+                'n_listened_tags',
+                'n_recommended_items',
+                'n_recommended_tags',
+                'n_common_tags',
+                'listened_items',
+                'listened_tags',
+                'recommended_items',
+                'recommended_tags',
+                'common_tags'
+            ]
+            user_info = {key: user_info[key] for key in keys}
+            
+            listened_tags_fig = px.bar(
+                listened_tag_distribution,
+                title='Listened tags weight distribution',
+                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+            )
+            listened_tags_fig.update_xaxes(range=[0, 30])
+            listened_tags_fig.update_layout(xaxis_tickangle=45)
 
-        # reorder the dict for better readability in the webpage
-        keys = [
-            'user_id',
-            'model_n_iterations',
-            'model_n_factors',
-            'model_regularization',
-            'model_user_fraction',
-            'n_listened',
-            'n_listened_tags',
-            'n_recommended_items',
-            'n_recommended_tags',
-            'n_common_tags',
-            'listened_items',
-            'listened_tags',
-            'recommended_items',
-            'recommended_tags',
-            'common_tags'
-        ]
-        user_info = {key: user_info[key] for key in keys}
+            recommended_tags_fig = px.bar(
+                recommended_tag_distribution,
+                title='Recommended tags weight distribution',
+                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+            )
+            recommended_tags_fig.update_xaxes(range=[0, 30])
+            recommended_tags_fig.update_layout(xaxis_tickangle=45)
+        
+        else:
+            user_info = {}
+            listened_tags_fig = px.bar(title='Listened tags weight distribution')
+            recommended_tags_fig = px.bar(title='Recommended tags weight distribution')
 
-        return json.dumps(user_info, indent=2)
+        return json.dumps(user_info, indent=2), listened_tags_fig, recommended_tags_fig
 
     app.run_server(debug=True, use_reloader=False) 
 
@@ -250,8 +342,8 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
         custom_data=['n_recommendations'],
         animation_frame='n_recommendations',
         animation_group='user',
-        marginal_x='histogram',
-        marginal_y='histogram',
+        # marginal_x='histogram',
+        # marginal_y='histogram',
         color='volume', 
         color_continuous_scale=px.colors.sequential.Viridis,
         width=float('inf'),
@@ -271,70 +363,102 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
     
     app = dash.Dash()
     app.layout = html.Div([
-        dcc.Graph(
-            id='basic-interactions',
-            figure=fig
-        ),
-
-        html.Div(className='row', children=[
+        # Graphs container
+        html.Div([
             html.Div([
-                dcc.Markdown("""
-                    **Click Data**
+                dcc.Graph(
+                    id='basic-interactions',
+                    figure=fig
+                ),
+            ], style={'width': '50%'}),
 
-                    Click on points in the graph.
-                """),
-                html.Pre(id='click-data'),
-            ], className='three columns'),
+            html.Div([
+                dcc.Graph(id='listened-tag-distribution'),
+                dcc.Graph(id='recommended-tag-distribution'),
+            ], style={'width': '50%'})
+
+        ], style={'display': 'flex'}),
+        
+        # Data container
+        html.Div([
+            dcc.Markdown("""
+                **Click Data**
+
+                Click on points in the graph.
+            """),
+            html.Pre(id='click-data'),
         ]),
     ])
 
-    @app.callback(
+    @app.callback([
         Output('click-data', 'children'),
+        Output('listened-tag-distribution', 'figure'),
+        Output('recommended-tag-distribution', 'figure')
+    ],
         Input('basic-interactions', 'clickData'))
-    def display_click_data(click_data):
-        if not click_data:
-            return
+    def handle_click_data(click_data):
+        if click_data:
+            point = click_data['points'][0]
+            user_id = point['id']
+            n_recommendations = int(point['customdata'][0])
+            diversity = point['x']
+            increase = point['y']
 
-        point = click_data['points'][0]
-        user_id = point['id']
-        n_recommendations = int(point['customdata'][0])
-        diversity = point['x']
-        increase = point['y']
+            user_info, listened_tag_distribution, recommended_tag_distribution = AnalyseUser(
+                user_id=user_id,
+                dataset=msd_dataset,
+                model_n_iterations=n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=regularization,
+                n_recommendations=n_recommendations
+            ).run()
 
-        user_info = AnalyseUser(
-            user_id=user_id,
-            dataset=msd_dataset,
-            model_n_iterations=n_iterations,
-            model_n_factors=n_factors,
-            model_regularization=regularization,
-            n_recommendations=n_recommendations
-        ).run()
+            user_info['organic_diversity'] = diversity
+            user_info['diversity_increase'] = increase
 
-        user_info['organic_diversity'] = diversity
-        user_info['diversity_increase'] = increase
+            # reorder the dict for better readability in the webpage
+            keys = [
+                'user_id',
+                'organic_diversity',
+                'diversity_increase',
+                'model_n_iterations',
+                'model_n_factors',
+                'model_regularization',
+                'model_user_fraction',
+                'n_listened',
+                'n_listened_tags',
+                'n_recommended_items',
+                'n_recommended_tags',
+                'n_common_tags',
+                'listened_items',
+                'listened_tags',
+                'recommended_items',
+                'recommended_tags',
+                'common_tags'
+            ]
+            user_info = {key: user_info[key] for key in keys}
+            
+            listened_tags_fig = px.bar(
+                listened_tag_distribution,
+                title='Listened tags weight distribution',
+                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+            )
+            listened_tags_fig.update_xaxes(range=[0, 30])
+            listened_tags_fig.update_layout(xaxis_tickangle=45)
 
-        # reorder the dict for better readability in the webpage
-        keys = [
-            'user_id',
-            'organic_diversity',
-            'diversity_increase',
-            'model_n_iterations',
-            'model_n_factors',
-            'model_regularization',
-            'model_user_fraction',
-            'n_listened',
-            'n_listened_tags',
-            'n_recommended_items',
-            'n_recommended_tags',
-            'n_common_tags',
-            'listened_items',
-            'listened_tags',
-            'recommended_items',
-            'recommended_tags',
-            'common_tags'
-        ]
-        user_info = {key: user_info[key] for key in keys}
+            recommended_tags_fig = px.bar(
+                recommended_tag_distribution,
+                title='Recommended tags weight distribution',
+                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+            )
+            recommended_tags_fig.update_xaxes(range=[0, 30])
+            recommended_tags_fig.update_layout(xaxis_tickangle=45)
+        
+        else:
+            user_info = {}
+            listened_tags_fig = px.bar(title='Listened tags weight distribution')
+            recommended_tags_fig = px.bar(title='Recommended tags weight distribution')
 
-        return json.dumps(user_info, indent=2)
+        return json.dumps(user_info, indent=2), listened_tags_fig, recommended_tags_fig
 
     app.run_server(debug=True, use_reloader=False) 
