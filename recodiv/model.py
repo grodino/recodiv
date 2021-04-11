@@ -3,6 +3,7 @@ import pickle
 from pathlib import Path
 from time import perf_counter
 
+import numba as nb
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -18,8 +19,8 @@ from lenskit.algorithms import Recommender
 from lenskit.algorithms.basic import TopN, Memorized
 
 
-from recodiv.utils import print_song_info
-from recodiv.utils import get_msd_song_info
+# from recodiv.utils import print_song_info
+# from recodiv.utils import get_msd_song_info
 
 
 # util.log_to_stderr()
@@ -176,3 +177,72 @@ def rank_to_weight(user_item, recommendations):
     recommendations['weight'] = recommendations.groupby('user')['rank'].transform(user_weights)
 
     return recommendations
+
+
+@nb.njit
+def wasserstein_1d(distribution: np.ndarray, other: np.ndarray) -> float:
+    """Compute the Optimal Transport Distance between histograms
+
+    We assume that distribution a sorted in increasing index and have the same
+    total weight
+    """
+    
+    work = w_sum = u_sum = r = 0
+
+    i = j = 0
+
+    while i < distribution.shape[0] and j < other.shape[0]:
+        if i <= j:
+            work += np.abs(w_sum - u_sum) * (i - r)
+            w_sum += distribution[i]
+
+            r = i
+            i += 1
+        
+        else:
+            work += np.abs(w_sum - u_sum) * (j - r)
+            u_sum += other[j]
+            
+            r = j
+            j += 1
+
+    return work / u_sum
+
+
+def tags_distance(distribution: pd.Series, other: pd.Series, tags: pd.Index, p=1):
+    """Compute the Optimal Transport Distance between histograms (see
+    https://arxiv.org/pdf/1803.00567.pdf p.30-33)
+    """
+
+    if p < 1:
+        raise ValueError('p must be greater or equal that 1')
+    if p != 1:
+        raise NotImplementedError('Only wasserstein 1 is currently supported')
+
+    # Make the tag distributions have the same support
+    distrib = distribution.reindex(index=tags, fill_value=0)
+    other = other.reindex(index=tags, fill_value=0)
+
+    # Sort by tag (in the lexicographic order) and normalize the distributions
+    # This is important because in the distance we implicitly associate a tag to
+    # a point in N.
+    distrib = distrib.sort_index()
+    distrib = distrib / distrib.sum()
+
+    other = other.sort_index()
+    other = other / other.sum()
+
+    # print(distrib, other, sep='\n')
+
+    return wasserstein_1d(distrib.to_numpy(), other.to_numpy())
+
+
+if __name__ == '__main__':
+    tags = pd.Index(['rock', 'pop', 'jazz', 'metal', 'classical'])
+    distribution = pd.Series({'rock': 3, 'pop': 10, 'jazz': 1})
+    other = pd.Series({'rock': 10, 'pop': 1, 'jazz': 5})
+
+    other_unbalanced = pd.Series({'rock': 10, 'pop': 1, 'jazz': 5, 'metal': 10})
+
+    print(tags_distance(distribution, other, tags, p=2))
+    print(tags_distance(distribution, other_unbalanced, tags, p=2))
