@@ -10,7 +10,7 @@ import binpickle
 import tikzplotlib
 import numpy as np
 import pandas as pd
-from graphviz import Digraph
+from tqdm import tqdm
 from matplotlib import colors
 from matplotlib import pyplot as pl
 
@@ -19,10 +19,11 @@ from recodiv.utils import plot_histogram
 from recodiv.utils import generate_graph
 from recodiv.model import train_model
 from recodiv.model import split_dataset
+from recodiv.model import tags_distance
 from recodiv.model import rank_to_weight
+from recodiv.model import evaluate_model_loss
 from recodiv.model import generate_predictions
 from recodiv.model import generate_recommendations
-from recodiv.model import evaluate_model_loss
 from recodiv.model import evaluate_model_recommendations
 from recodiv.triversity.graph import IndividualHerfindahlDiversities
 
@@ -291,10 +292,13 @@ class ComputeUsersDiversities(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
 
     def output(self):
         return luigi.LocalTarget(
-            self.dataset.data_folder.joinpath('users_diversities.csv')
+            self.dataset.data_folder.joinpath(f'users_diversities{self.alpha}.csv')
         )
 
     def requires(self):
@@ -304,10 +308,10 @@ class ComputeUsersDiversities(luigi.Task):
 
     def run(self):
         graph_file = self.input()
-        graph = IndividualHerfindahlDiversities.recall(graph_file.path)
+        graph: IndividualHerfindahlDiversities = IndividualHerfindahlDiversities.recall(graph_file.path)
 
         graph.normalise_all()
-        diversities = graph.diversities((0, 1, 2))
+        diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
 
         pd.DataFrame({
             'user': list(diversities.keys()), 
@@ -323,14 +327,18 @@ class PlotUsersDiversitiesHistogram(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
 
     def output(self):
         figures = self.dataset.data_folder.joinpath(f'figures')
-        return luigi.LocalTarget(figures.joinpath('user_diversity_histogram.png'))
+        return luigi.LocalTarget(figures.joinpath(f'user_diversity{self.alpha}_histogram.png'))
 
     def requires(self):
         return ComputeUsersDiversities(
-            dataset=self.dataset
+            dataset=self.dataset,
+            alpha=self.alpha
         )
     
     def run(self):
@@ -352,10 +360,13 @@ class ComputeTagsDiversities(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
 
     def output(self):
         return luigi.LocalTarget(
-            self.dataset.data_folder.joinpath('tags_diversities.csv')
+            self.dataset.data_folder.joinpath(f'tags_diversities{self.alpha}.csv')
         )
 
     def requires(self):
@@ -368,7 +379,7 @@ class ComputeTagsDiversities(luigi.Task):
         graph = IndividualHerfindahlDiversities.recall(graph_file.path)
 
         graph.normalise_all()
-        diversities = graph.diversities((2, 1, 0))
+        diversities = graph.diversities((2, 1, 0), alpha=self.alpha)
 
         pd.DataFrame({
             'tag': list(diversities.keys()), 
@@ -384,14 +395,18 @@ class PlotTagsDiversitiesHistogram(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
 
     def output(self):
         figures = self.dataset.data_folder.joinpath('figures')
-        return luigi.LocalTarget(figures.joinpath('tag_diversity_histogram.png'))
+        return luigi.LocalTarget(figures.joinpath(f'tag_diversity{self.alpha}_histogram.png'))
 
     def requires(self):
         return ComputeTagsDiversities(
-            dataset=self.dataset
+            dataset=self.dataset,
+            alpha=self.alpha
         )
     
     def run(self):
@@ -546,6 +561,10 @@ class ComputeTrainTestUserDiversity(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
+
     user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -559,10 +578,10 @@ class ComputeTrainTestUserDiversity(luigi.Task):
     def output(self):
         return {
             'train': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath('trainset_users_diversities.csv')
+                self.dataset.data_folder.joinpath(f'trainset_users_diversities{self.alpha}.csv')
             ),
             'test': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath('testset_users_diversities.csv')
+                self.dataset.data_folder.joinpath(f'testset_users_diversities{self.alpha}.csv')
             ),
         }
 
@@ -575,10 +594,10 @@ class ComputeTrainTestUserDiversity(luigi.Task):
         )
 
         train_graph.normalise_all()
-        train_diversities = train_graph.diversities((0, 1, 2))
+        train_diversities = train_graph.diversities((0, 1, 2), alpha=self.alpha)
         
         test_graph.normalise_all()
-        test_diversities = test_graph.diversities((0, 1, 2))
+        test_diversities = test_graph.diversities((0, 1, 2), alpha=self.alpha)
 
         pd.DataFrame({
             'user': list(train_diversities.keys()), 
@@ -599,6 +618,9 @@ class PlotTrainTestUsersDiversitiesHistogram(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
     user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -606,16 +628,17 @@ class PlotTrainTestUsersDiversitiesHistogram(luigi.Task):
     def output(self):
         figures = self.dataset.data_folder.joinpath(f'figures')
         return {
-            'train_png': luigi.LocalTarget(figures.joinpath('trainset_user_diversity_histogram.png')),
-            'train_tex': luigi.LocalTarget(figures.joinpath('trainset_user_diversity_histogram.tex')),
-            'test_png': luigi.LocalTarget(figures.joinpath('testset_user_diversity_histogram.png')),
-            'test_tex': luigi.LocalTarget(figures.joinpath('testset_user_diversity_histogram.tex')),
+            'train_png': luigi.LocalTarget(figures.joinpath(f'trainset_user_diversity{self.alpha}_histogram.png')),
+            'train_tex': luigi.LocalTarget(figures.joinpath(f'trainset_user_diversity{self.alpha}_histogram.tex')),
+            'test_png': luigi.LocalTarget(figures.joinpath(f'testset_user_diversity{self.alpha}_histogram.png')),
+            'test_tex': luigi.LocalTarget(figures.joinpath(f'testset_user_diversity{self.alpha}_histogram.tex')),
         }
 
     def requires(self):
         return ComputeTrainTestUserDiversity(
             dataset=self.dataset,
-            user_fraction=self.user_fraction
+            user_fraction=self.user_fraction,
+            alpha=self.alpha
         )
     
     def run(self):
@@ -1350,6 +1373,9 @@ class ComputeRecommendationUsersDiversities(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
 
     model_n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
@@ -1382,14 +1408,14 @@ class ComputeRecommendationUsersDiversities(luigi.Task):
     def output(self):
         model = Path(self.input().path).parent
         return luigi.LocalTarget(
-            model.joinpath(f'recommendations-{self.n_recommendations}-users_diversities.csv')
+            model.joinpath(f'recommendations-{self.n_recommendations}-users_diversities{self.alpha}.csv')
         )
 
     def run(self):
         graph = IndividualHerfindahlDiversities.recall(self.input().path)
 
         graph.normalise_all()
-        diversities = graph.diversities((0, 1, 2))
+        diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
 
         pd.DataFrame({
             'user': list(diversities.keys()), 
@@ -1404,6 +1430,9 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
+    )
+    alpha_values = luigi.parameter.ListParameter(
+        description="The true diversity orders to plot"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -1425,33 +1454,43 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
     )
 
     def requires(self):
-        return ComputeRecommendationUsersDiversities(
-            dataset=self.dataset,
-            model_n_iterations=self.model_n_iterations,
-            model_n_factors=self.model_n_factors,
-            model_regularization=self.model_regularization,
-            model_user_fraction=self.model_user_fraction,
-            n_recommendations=self.n_recommendations
-        )
+        req = {}
+
+        for alpha in self.alpha_values:
+            req[alpha] = ComputeRecommendationUsersDiversities(
+                dataset=self.dataset,
+                alpha=alpha,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            )
+
+        return req
     
     def output(self):
-        figures = Path(self.input().path).parent.joinpath('figures')
+        figures = Path(self.input()[self.alpha_values[0]].path).parent.joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
-            f'{self.n_recommendations}-recommendation_user_diversity_histogram.png'
+            f'{self.n_recommendations}-recommendation_user_diversity{self.alpha_values}_histogram.png'
         ))
   
     def run(self):
         self.output().makedirs()
-        diversities = pd.read_csv(self.input().path)
 
-        fig, ax = plot_histogram(diversities['diversity'].to_numpy(), min_quantile=0, max_quantile=1)
+        for alpha in self.alpha_values:
+            diversities = pd.read_csv(self.input()[alpha].path)
+            diversities.plot.bar('user', 'diversity', alpha=.5)
+
+        # fig, ax = plot_histogram(diversities['diversity'].to_numpy(), min_quantile=0, max_quantile=1)
         
-        ax.set_xlabel('Diversity index')
-        ax.set_ylabel('User count')
-        ax.set_title('Histogram of recommendations diversity index')
-        fig.savefig(self.output().path, format='png', dpi=300)
+        # ax.set_xlabel('Diversity index')
+        # ax.set_ylabel('User count')
+        # ax.set_title('Histogram of recommendations diversity index')
+        # fig.savefig(self.output().path, format='png', dpi=300)
+        pl.savefig(self.output().path, format='png', dpi=300)
         
-        del fig, ax, diversities
+        # del fig, ax, diversities
 
 
 class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
@@ -1460,6 +1499,9 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -1484,10 +1526,12 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         return {
             'dataset': ImportDataset(dataset=self.dataset),
             'user_diversity': ComputeUsersDiversities(
-                dataset=self.dataset
+                dataset=self.dataset,
+                alpha=self.alpha
             ),
             'recommendation_diversity': ComputeRecommendationUsersDiversities(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
@@ -1500,10 +1544,10 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         figures = Path(self.input()['recommendation_diversity'].path).parent.joinpath('figures')
         return {
             'png': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations}-recommendations_diversity_vs_original_diversity.png'
+                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_vs_original_diversity.png'
             )),
             'latex': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations}-recommendations_diversity_vs_original_diversity.tex'
+                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_vs_original_diversity.tex'
             )),
         }
 
@@ -1529,7 +1573,8 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
             marker='+', 
             c='volume', 
             colormap='viridis',
-            norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max())
+            norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
+            # xlim=(0, 100)
         )
         pl.xlabel('"organic" diversity')
         pl.ylabel('recommendation diversity')
@@ -1623,6 +1668,9 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
 
     model_n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
@@ -1655,7 +1703,7 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
     def output(self):
         model = Path(self.input().path).parent
         return luigi.LocalTarget(
-            model.joinpath(f'listenings-recommendations-{self.n_recommendations}-users_diversities.csv')
+            model.joinpath(f'listenings-recommendations-{self.n_recommendations}-users_diversities{self.alpha}.csv')
         )
 
     def run(self):
@@ -1664,7 +1712,7 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
         )
 
         graph.normalise_all()
-        diversities = graph.diversities((0, 1, 2))
+        diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
         diversities = pd.DataFrame({
             'user': list(diversities.keys()), 
             'diversity': list(diversities.values())
@@ -1681,6 +1729,9 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -1705,19 +1756,20 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
         return {
             'with_recommendations': ComputeRecommendationWithListeningsUsersDiversities(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             ),
-            'original': ComputeUsersDiversities(dataset=self.dataset)
+            'original': ComputeUsersDiversities(dataset=self.dataset, alpha=self.alpha)
         }
         
     def output(self):
         model = Path(self.input()['with_recommendations'].path).parent
         return luigi.LocalTarget(
-            model.joinpath(f'listenings-recommendations-{self.n_recommendations}-users_diversities_increase.csv')
+            model.joinpath(f'listenings-recommendations-{self.n_recommendations}-users_diversities{self.alpha}_increase.csv')
         )
 
     def run(self):
@@ -1741,6 +1793,9 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
 
     model_n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
@@ -1763,6 +1818,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
     def requires(self):
         return ComputeRecommendationWithListeningsUsersDiversityIncrease(
             dataset=self.dataset,
+            alpha=self.alpha,
             model_n_iterations=self.model_n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
@@ -1773,7 +1829,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
     def output(self):
         figures = Path(self.input().path).parent.joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
-            f'{self.n_recommendations}-recommendations_diversity_increase_histogram.png'
+            f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_histogram.png'
         ))
 
     
@@ -1796,6 +1852,9 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -1820,10 +1879,12 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         return {
             'dataset': ImportDataset(dataset=self.dataset),
             'user_diversity': ComputeUsersDiversities(
-                dataset=self.dataset
+                dataset=self.dataset,
+                alpha=self.alpha
             ),
             'diversity_increase': ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
@@ -1836,10 +1897,10 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         figures = Path(self.input()['diversity_increase'].path).parent.joinpath('figures')
         return {
             'png': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations}-recommendations_diversity_increase_vs_original_diversity.png'
+                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_vs_original_diversity.png'
             )),
             'latex': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations}-recommendations_diversity_increase_vs_original_diversity.tex'
+                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_vs_original_diversity.tex'
             )),
         }
 
@@ -1864,7 +1925,8 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
             marker='+', 
             c='volume', 
             colormap='viridis',
-            norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max())
+            norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
+            # xlim=(0, 100)
         )
         pl.xlabel('"organic" diversity')
         pl.ylabel('diversity increase')
@@ -1883,16 +1945,108 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         del diversities, increase, merged
 
 
+class ComputeRecommendedToOrganicTagDistance(luigi.Task):
+    """Compute for each user in the test set the distance between recommended
+    and listened tag distributions obtained by bipartite projection of the
+    corresponding graphs"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return {
+            'dataset': ImportDataset(self.dataset),
+            'train_test': GenerateTrainTest(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction
+            ),
+            'graphs': BuildTrainTestGraphs(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction
+            ),
+            'recommendation_graph':BuildRecommendationGraph(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
+        }
+    
+    def output(self):
+        model = Path(self.input()['recommendation_graph'].path).parent
+        
+        return luigi.LocalTarget(
+            model.joinpath(f'{self.n_recommendations}reco_recommended_listened_tags_distance.csv'),
+            format=Nop
+        )
+
+    def run(self):
+        item_tag: pd.DataFrame = pd.read_csv(self.input()['dataset']['item_tag'].path)
+        test_set: pd.DataFrame = pd.read_csv(self.input()['train_test']['test'].path)
+        listening_graph = IndividualHerfindahlDiversities.recall(self.input()['graphs']['test'].path)
+        recommendation_graph = IndividualHerfindahlDiversities.recall(self.input()['recommendation_graph'].path)
+
+        # Unique tags in the test set
+        tags = item_tag['tag'].unique()
+
+        users = []
+        distances =  []
+
+        for user in tqdm(test_set['user'].unique(), desc='Tag distance'):
+            organic_distrib = listening_graph.spread_node(user, (0, 1, 2))
+            recommended_distrib = recommendation_graph.spread_node(user, (0, 1, 2))
+
+            distances.append(tags_distance(
+                pd.Series(organic_distrib),
+                pd.Series(recommended_distrib),
+                pd.Index(tags)
+            ))
+            users.append(user)
+
+        pd.DataFrame({'user': users, 'distance': distances}) \
+            .to_csv(self.output().path, index=False)
+
+        
+class PlotDiversityIncreaseVsTagDistance(luigi.Task):
+    """Plot the increase of user diversity after recommendations versus the
+    distance between recommended tag distribution and listened tag
+    distribution"""
+
+    pass   
+
 ################################################################################
 # HYPERPARAMETERS ANALYSIS                                                     #
 ################################################################################
-# TODO : remove the figures from evaluate model
 class PlotDiversityVsLatentFactors(luigi.Task):
     """Plot the mean user diversity of the recommendations as a function of the
        number of latent factors"""
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -1919,6 +2073,7 @@ class PlotDiversityVsLatentFactors(luigi.Task):
         for n_factors in self.n_factors_values:
             tasks[(n_factors, 'diversities')] = ComputeRecommendationUsersDiversities(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
@@ -1939,7 +2094,7 @@ class PlotDiversityVsLatentFactors(luigi.Task):
     def output(self):
         figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
-            f'recommendations_diversity_vs_{self.n_factors_values}factors.png'
+            f'{self.n_recommendations}recommendations_diversity{self.alpha}_vs_{self.n_factors_values}factors_{self.model_regularization}reg.png'
         ))
 
     def run(self):
@@ -1963,19 +2118,19 @@ class PlotDiversityVsLatentFactors(luigi.Task):
         
         metrics.set_index('n_factors', inplace=True)
         # metrics = metrics / metrics.loc[metrics.index[0]]
-        metrics = metrics - metrics.loc[metrics.index[0]]
+        # metrics = metrics - metrics.loc[metrics.index[0]]
 
         fig, ax1 = pl.subplots()        
 
         # Add plots
-        div_line = ax1.plot(factors, mean_diversities, color='green', label='diversity')
+        div_line = ax1.semilogx(factors, mean_diversities, color='green', label='diversity')
         ax1.set_xlabel('number of factors')
         ax1.set_ylabel('mean diversity')
 
         ax2 = ax1.twinx()
-        ax2.set_ylabel('metrics')
+        ax2.set_ylabel('NDCG')
         # metrics_lines = metrics.plot(ax=ax2, legend=False, logy=True).get_lines()
-        metrics_lines = metrics.plot(ax=ax2, legend=False, logy=False).get_lines()
+        metrics_lines = metrics['ndcg'].plot(ax=ax2, legend=False, logy=False).get_lines()
         
         # Obscure trick to have only one legend
         lines = [*div_line, ]
@@ -1993,13 +2148,16 @@ class PlotDiversityVsLatentFactors(luigi.Task):
 
         del metrics, mean_diversities, fig, ax1, ax2
 
-# TODO : remove the figures from evaluate model
+
 class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
     """Plot the mean user diversity increase after recommendation as a function of the
        number of latent factors"""
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -2026,6 +2184,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
         for n_factors in self.n_factors_values:
             tasks[(n_factors, 'deltas')] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
@@ -2046,7 +2205,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
     def output(self):
         figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
-            f'recommendations_diversity_increase_vs_{self.n_factors_values}factors.png'
+            f'{self.n_recommendations}recommendations_diversity{self.alpha}_increase_vs_{self.n_factors_values}factors_{self.model_regularization}reg.png'
         ))
 
     def run(self):
@@ -2069,18 +2228,18 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
                 metrics = pd.concat((metrics, metric))
 
         metrics.set_index('n_factors', inplace=True)
-        metrics = metrics / metrics.loc[metrics.index[0]]
+        # metrics = metrics / metrics.loc[metrics.index[0]]
 
         fig, ax1 = pl.subplots()        
 
         # Add plots
-        div_line = ax1.plot(factors, mean_deltas, color='green', label='diversity')
+        div_line = ax1.semilogx(factors, mean_deltas, color='green', label='diversity')
         ax1.set_xlabel('number of factors')
         ax1.set_ylabel('mean diversity increase')
 
         ax2 = ax1.twinx()
         ax2.set_ylabel('metrics')
-        metrics_lines = metrics.plot(ax=ax2, legend=False, logy=True).get_lines()
+        metrics_lines = metrics['ndcg'].plot(ax=ax2, legend=False, logy=True).get_lines()
         
         # Obscure trick to have only one legend
         lines = [*div_line, ]
@@ -2103,6 +2262,9 @@ class PlotDiversityVsRegularization(luigi.Task):
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -2129,6 +2291,7 @@ class PlotDiversityVsRegularization(luigi.Task):
         for regularization in self.model_regularization_values:
             tasks[(regularization, 'diversities')] = ComputeRecommendationUsersDiversities(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=regularization,
@@ -2149,7 +2312,7 @@ class PlotDiversityVsRegularization(luigi.Task):
     def output(self):
         figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
-            f'recommendations_diversity_vs_{self.model_regularization_values}reg.png'
+            f'{self.n_recommendations}reco-recommendations_diversity{self.alpha}_vs_{self.model_regularization_values}reg-{self.model_n_factors}f.png'
         ))
 
     def run(self):
@@ -2183,7 +2346,7 @@ class PlotDiversityVsRegularization(luigi.Task):
 
         ax2 = ax1.twinx()
         ax2.set_ylabel('metrics')
-        metrics_lines = metrics.plot(ax=ax2, legend=False, logy=True).get_lines()
+        metrics_lines = metrics['ndcg'].plot(ax=ax2, legend=False, logy=True).get_lines()
         
         # Obscure trick to have only one legend
         lines = [*div_line, ]
@@ -2206,6 +2369,9 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -2232,6 +2398,7 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
         for regularization in self.model_regularization_values:
             tasks[(regularization, 'deltas')] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=regularization,
@@ -2252,7 +2419,7 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
     def output(self):
         figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
-            f'recommendations_diversity_increase_vs_{self.model_regularization_values}reg.png'
+            f'{self.n_recommendations}recommendations_diversity{self.alpha}_increase_vs_{self.model_regularization_values}reg_{self.model_n_factors}f.png'
         ))
 
     def run(self):
@@ -2286,7 +2453,7 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
 
         ax2 = ax1.twinx()
         ax2.set_ylabel('metrics')
-        metrics_lines = metrics.plot(ax=ax2, legend=False, logy=True).get_lines()
+        metrics_lines = metrics['ndcg'].plot(ax=ax2, legend=False, logy=True).get_lines()
         
         # Obscure trick to have only one legend
         lines = [*div_line, ]
@@ -2309,6 +2476,9 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -2345,7 +2515,7 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
         return luigi.LocalTarget(aggregated.joinpath(
-            f'recommendations_diversity_vs_{self.n_recommendations_values}reco-{self.model_n_factors}factors.csv'
+            f'recommendations_diversity{self.alpha}_vs_{self.n_recommendations_values}reco-{self.model_n_factors}factors.csv'
         ))
     
     def run(self):
@@ -2365,7 +2535,7 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
             
             graph = generate_graph(user_item,item_tag)
             graph.normalise_all()
-            diversities = graph.diversities((0, 1, 2))
+            diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
             
             mean_diversities.append(
                 sum(diversities.values()) / len(diversities)
@@ -2387,6 +2557,9 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -2413,6 +2586,7 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
         for n_factors in self.n_factors_values:
             tasks[n_factors] = ComputeDiversityVsRecommendationVolume(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
@@ -2426,10 +2600,10 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
         figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
         return {
             'png': luigi.LocalTarget(figures.joinpath(
-                f'recommendations_diversity_vs_{self.n_recommendations_values}reco-{self.n_factors_values}factors.png'
+                f'recommendations_diversity{self.alpha}_vs_{self.n_recommendations_values}reco-{self.n_factors_values}factors.png'
             )),
             'latex': luigi.LocalTarget(figures.joinpath(
-                f'recommendations_diversity_vs_{self.n_recommendations_values}reco-{self.n_factors_values}factors.tex'
+                f'recommendations_diversity{self.alpha}_vs_{self.n_recommendations_values}reco-{self.n_factors_values}factors.tex'
             ))
         }
 
@@ -2460,6 +2634,7 @@ class AnalyseUser(luigi.Task):
     user_id = luigi.parameter.Parameter(
         description='The id string of the user'
     )
+    
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
@@ -2609,6 +2784,9 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
 
     model_n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
@@ -2636,6 +2814,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
             ),
             'user_diversity': ComputeTrainTestUserDiversity(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 user_fraction=self.model_user_fraction
             ),
         }
@@ -2643,6 +2822,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
         for n_factors in self.model_n_factors_values:
             req[f'{n_factors}-recommendation_diversity'] = ComputeRecommendationUsersDiversities(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
@@ -2655,7 +2835,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
         return luigi.LocalTarget(
-            aggregated.joinpath(f'{self.n_recommendations}reco-{self.model_n_factors_values}factors-users_diversities.csv')
+            aggregated.joinpath(f'{self.n_recommendations}reco-{self.model_n_factors_values}factors-users_diversities{self.alpha}.csv')
         )
 
     def run(self):
@@ -2688,6 +2868,100 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
         return merged
 
 
+class ComputeDiversityIncreaseVsUserDiversityVsLatentFactors(luigi.Task):
+    """Compute the diversity of the recommendations associated to each user with
+    respect to the user diversity before recommendations for different number of
+    factors"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors_values = luigi.parameter.ListParameter(
+        description='Values of number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        req = {
+            'train_test': GenerateTrainTest(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction
+            ),
+            'user_diversity': ComputeTrainTestUserDiversity(
+                dataset=self.dataset,
+                alpha=self.alpha,
+                user_fraction=self.model_user_fraction
+            ),
+        }
+
+        for n_factors in self.model_n_factors_values:
+            req[f'{n_factors}-diversity_increase'] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
+                dataset=self.dataset,
+                alpha=self.alpha,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            )
+
+        return req
+
+    def output(self):
+        aggregated = self.dataset.base_folder.joinpath('aggregated')
+        return luigi.LocalTarget(
+            aggregated.joinpath(f'{self.n_recommendations}reco-{self.model_n_factors_values}factors-diversity{self.alpha}_increase.csv')
+        )
+
+    def run(self):
+        self.output().makedirs()
+        diversities = pd.read_csv(self.input()['user_diversity']['test'].path)
+
+        # compute user volume
+        user_item = pd.read_csv(self.input()['train_test']['test'].path)
+        volume = np.log10(user_item.groupby('user')['rating'].sum()) \
+            .rename('volume')
+
+        # Get the diversity values for the different number of factors
+        deltas = []
+
+        for n_factors in self.model_n_factors_values:
+            divs = pd.read_csv(
+                self.input()[f'{n_factors}-diversity_increase'].path
+            ).rename(columns={'diversity': 'diversity_increase'})
+
+            divs = divs[divs['diversity_increase'] != 0]
+
+            divs['n_factors'] = n_factors
+            deltas.append(divs)
+
+        deltas: pd.DataFrame = pd.concat(deltas, ignore_index=True)
+
+        # inner join, only keep users for whom we calculated a recommendation diversity value
+        merged = deltas.merge(diversities, on='user')
+        merged = merged.merge(volume, on='user')
+        merged.to_csv(self.output().path)
+
+        return merged
+
+
 class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
     """Compute the diversity of the recommendations associated to each user with
     respect to the user diversity before recommendations for different number of
@@ -2695,6 +2969,9 @@ class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -2723,6 +3000,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
             ),
             'user_diversity': ComputeTrainTestUserDiversity(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 user_fraction=self.model_user_fraction
             ),
         }
@@ -2730,6 +3008,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
         for n_recommendations in self.n_recommendations_values:
             req[f'{n_recommendations}-recommendation_diversity'] = ComputeRecommendationUsersDiversities(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
@@ -2742,7 +3021,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
         return luigi.LocalTarget(
-            aggregated.joinpath(f'{self.n_recommendations_values}reco-{self.model_n_factors}factors-users_diversities.csv')
+            aggregated.joinpath(f'{self.n_recommendations_values}reco-{self.model_n_factors}factors-users_diversities{self.alpha}.csv')
         )
 
     def run(self):
@@ -2783,6 +3062,9 @@ class ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
 
     model_n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
@@ -2810,6 +3092,7 @@ class ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(luigi.Task):
             ),
             'user_diversity': ComputeTrainTestUserDiversity(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 user_fraction=self.model_user_fraction
             ),
         }
@@ -2817,6 +3100,7 @@ class ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(luigi.Task):
         for n_recommendations in self.n_recommendations_values:
             req[f'{n_recommendations}-diversity_increase'] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=self.dataset,
+                alpha=self.alpha,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
@@ -2829,7 +3113,7 @@ class ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(luigi.Task):
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
         return luigi.LocalTarget(
-            aggregated.joinpath(f'{self.n_recommendations_values}reco-{self.model_n_factors}factors-diversity_increase.csv')
+            aggregated.joinpath(f'{self.n_recommendations_values}reco-{self.model_n_factors}factors-diversity{self.alpha}_increase.csv')
         )
 
     def run(self):
@@ -2874,8 +3158,6 @@ class CollectAllModelFigures(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     ) 
 
-    priority = -1
-
     def run(self):
         figures = self.dataset.base_folder.joinpath('figures')
         figures.mkdir(exist_ok=True)
@@ -2900,5 +3182,37 @@ class DeleteAllModelFigures(luigi.Task):
         figures = self.dataset.base_folder.joinpath('figures')
         figures.mkdir(exist_ok=True)
 
-        for figure in self.dataset.base_folder.glob('**/model-*/figures/*'):
+        for figure in self.dataset.base_folder.glob('**/figures/*'):
             figure.unlink()
+
+    
+    def will_delete(self):
+        """Returns the paths of the files that will be deleted"""
+
+        return iter(self.dataset.base_folder.glob('**/figures/*'))
+
+
+class DeleteAllModelAnalysis(luigi.Task):
+    """Delete all diversity, listening graph ... but not recommendations and
+    trained models"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    def run(self):
+
+        for file in self.dataset.base_folder.glob('model*/*users_diversities*.csv'):
+            file.unlink()
+
+        for file in self.dataset.base_folder.glob('model*/*-graph.pk'):
+            file.unlink()
+
+
+    def will_delete(self):
+        """Returns the paths of the files that will be deleted"""
+
+        files = list(self.dataset.base_folder.glob('model*/*users_diversities*.csv'))
+        files += list(self.dataset.base_folder.glob('model*/*-graph.pk'))
+
+        return iter(files)

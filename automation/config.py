@@ -6,7 +6,8 @@ N_RECOMMENDATIONS = 50
 N_RECOMMENDATIONS_VALUES = [10, 20, 30, 40, 50, 75, 100, 150, 200, 500, 1000]
 N_FACTORS_VALUES = [5, 20, 50, 60, 70, 80, 200, 500, 1_000, 3_000]
 # N_FACTORS_VALUES = [5, 20, 50, 60, 70, 80, 200, 500, 1_000]
-REGULARIZATION_VALUES = [.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e5, 1e6]
+# REGULARIZATION_VALUES = [.005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e5, 1e6]
+REGULARIZATION_VALUES = [1e-5, .005, .01, 1.0, 10.0, 100.0, 200.0, 5_000.0, 1e5, 1e6]
 
 # TODO: change these values when using the better dataset (not the confidence pre-corrected ...)
 OPT_N_FACTORS = 3_000

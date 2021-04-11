@@ -120,6 +120,7 @@ def report_figures(context):
     tasks += [
         PlotRecommendationsUsersDiversitiesHistogram(
             dataset=msd_dataset,
+            alpha_values=[0, 2, float('inf')],
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -136,8 +137,10 @@ def report_figures(context):
     
     # Recommendation diversity increase vs organic diversity at equilibrium and variations
     tasks += [
+        # Herfindal
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
+            alpha=2,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -145,6 +148,7 @@ def report_figures(context):
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
+            alpha=2,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -152,6 +156,57 @@ def report_figures(context):
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
+            alpha=2,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10
+        ),
+        # Richness
+        PlotUserDiversityIncreaseVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=0,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        PlotUserDiversityIncreaseVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=0,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500
+        ),
+        PlotUserDiversityIncreaseVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=0,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10
+        ),
+        # Berger-Parker
+        PlotUserDiversityIncreaseVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=float('inf'),
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        PlotUserDiversityIncreaseVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=float('inf'),
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500
+        ),
+        PlotUserDiversityIncreaseVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=float('inf'),
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -159,10 +214,12 @@ def report_figures(context):
         ),
     ]
 
-    # # Recommendation diversity vs organic diversity at equilibrium and variations
+    # Recommendation diversity vs organic diversity at equilibrium and variations
     tasks += [
+        # Herfindal diversity
         PlotRecommendationDiversityVsUserDiversity(
             dataset=msd_dataset,
+            alpha=2,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -170,6 +227,7 @@ def report_figures(context):
         ),
         PlotRecommendationDiversityVsUserDiversity(
             dataset=msd_dataset,
+            alpha=2,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -177,6 +235,57 @@ def report_figures(context):
         ),
         PlotRecommendationDiversityVsUserDiversity(
             dataset=msd_dataset,
+            alpha=2,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500
+        ),
+        # Richness
+        PlotRecommendationDiversityVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=0,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        PlotRecommendationDiversityVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=0,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10
+        ),
+        PlotRecommendationDiversityVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=0,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500
+        ),
+        # Berger-Parker
+        PlotRecommendationDiversityVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=float('inf'),
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        PlotRecommendationDiversityVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=float('inf'),
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10
+        ),
+        PlotRecommendationDiversityVsUserDiversity(
+            dataset=msd_dataset,
+            alpha=float('inf'),
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -186,47 +295,192 @@ def report_figures(context):
 
     # Recommendation diversity vs recommendation volume at equilibrium
     tasks += [
+        # Herfindal diversity
         PlotDiversityVsRecommendationVolume(
             dataset=msd_dataset,
+            alpha=2,
             model_n_iterations=N_ITERATIONS,
             n_factors_values=[5, 20, 500, 3_000],
             model_regularization=OPT_REGULARIZATION,
             n_recommendations_values=N_RECOMMENDATIONS_VALUES
-        )
+        ),
+        # Richness
+        PlotDiversityVsRecommendationVolume(
+            dataset=msd_dataset,
+            alpha=0,
+            model_n_iterations=N_ITERATIONS,
+            n_factors_values=[5, 20, 500, 3_000],
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations_values=N_RECOMMENDATIONS_VALUES
+        ),
+        # Berger-Parker
+        PlotDiversityVsRecommendationVolume(
+            dataset=msd_dataset,
+            alpha=float('inf'),
+            model_n_iterations=N_ITERATIONS,
+            n_factors_values=[5, 20, 500, 3_000],
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations_values=N_RECOMMENDATIONS_VALUES
+        ),
     ]
 
     # Recommendation diversity versus the number of latent factors used in the model
     tasks += [
+        # Herfindal
         PlotDiversityVsLatentFactors(
             dataset=msd_dataset,
+            alpha=2,
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        # Richness
+        PlotDiversityVsLatentFactors(
+            dataset=msd_dataset,
+            alpha=0,
+            model_n_iterations=N_ITERATIONS,
+            n_factors_values=N_FACTORS_VALUES,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        # Berger-Parker
+        PlotDiversityVsLatentFactors(
+            dataset=msd_dataset,
+            alpha=float('inf'),
+            model_n_iterations=N_ITERATIONS,
+            n_factors_values=N_FACTORS_VALUES,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+    ]
+
+    # Recommendation diversity versus the regularization factor used in the model
+    tasks += [
+        PlotDiversityVsRegularization(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization_values=REGULARIZATION_VALUES,
             n_recommendations=N_RECOMMENDATIONS
         )
     ]
 
     # Diversity increase versus the number of latent factors used in the model
     tasks += [
+        # Herfindal
         PlotDiversityIncreaseVsLatentFactors(
             dataset=msd_dataset,
+            alpha=2,
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS
-        )
+        ),
+        # Richness
+        PlotDiversityIncreaseVsLatentFactors(
+            dataset=msd_dataset,
+            alpha=0,
+            model_n_iterations=N_ITERATIONS,
+            n_factors_values=N_FACTORS_VALUES,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        # Berger-Parker
+        PlotDiversityIncreaseVsLatentFactors(
+            dataset=msd_dataset,
+            alpha=float('inf'),
+            model_n_iterations=N_ITERATIONS,
+            n_factors_values=N_FACTORS_VALUES,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
     ]
 
+    # Diversity increase versus the regularization factor used in the model
+    tasks += [
+        # Herfindal
+        PlotDiversityIncreaseVsRegularization(
+            dataset=msd_dataset,
+            alpha=2,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization_values=REGULARIZATION_VALUES,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        # Richness
+        PlotDiversityIncreaseVsRegularization(
+            dataset=msd_dataset,
+            alpha=0,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization_values=REGULARIZATION_VALUES,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        # Berger-Parker
+        PlotDiversityIncreaseVsRegularization(
+            dataset=msd_dataset,
+            alpha=float('inf'),
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization_values=REGULARIZATION_VALUES,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+    ]
+
+    # TODO : doc
+    # tasks += [
+    #     ComputeRecommendedToOrganicTagDistance(
+    #         dataset=msd_dataset,
+    #         model_n_iterations=N_ITERATIONS, 
+    #         model_n_factors=OPT_N_FACTORS,
+    #         model_regularization=OPT_REGULARIZATION,
+    #         n_recommendations=N_RECOMMENDATIONS
+    #     )
+    # ]
 
     luigi.build(tasks, local_scheduler=local_scheduler, log_level='INFO', scheduler_host='127.0.0.1')
 
 
+@cli.command()
+@click.pass_context
+def clean_models(context):
+    """Keep the models, clear the models' folders"""
+
+    n_users = context.obj['n_users']
+    local_scheduler = context.obj['local_scheduler']
+    name = context.obj['name']
+
+    msd_dataset = MsdDataset(name, n_users=n_users)
+
+    task = DeleteAllModelAnalysis(dataset=msd_dataset)
+    for file in task.will_delete():
+        print(f'\t{file}')
+
+    input('ARE YOU SURE YOU WANT TO DELETE THE FILES ? Press Enter to continue')
+    luigi.build([task], local_scheduler=local_scheduler, log_level='INFO', scheduler_host='127.0.0.1')
+
+
+@cli.command()
+@click.pass_context
+def clear_figures(context):
+    """Clear the generated figures"""
+
+    n_users = context.obj['n_users']
+    local_scheduler = context.obj['local_scheduler']
+    name = context.obj['name']
+
+    msd_dataset = MsdDataset(name, n_users=n_users)
+
+    task = DeleteAllModelFigures(dataset=msd_dataset)
+    for file in task.will_delete():
+        print(f'\t{file}')
+
+    input('ARE YOU SURE YOU WANT TO DELETE THE FILES ? Press Enter to continue')
+    luigi.build([task], local_scheduler=local_scheduler, log_level='INFO', scheduler_host='127.0.0.1')
+
+
 @cli.group()
-def interactive():
-    pass
-
-
-@interactive.command()
 @click.option(
     '--animated', 
     type=click.Choice(['latent-factors', 'reco-volume']),
@@ -234,10 +488,20 @@ def interactive():
     help='Choose the variable to change during the animation'
 )
 @click.pass_context
-def recommendation_diversity(context, animated):
+def interactive(context: click.Context, animated: str):
+    """Lauch the interactive graphs server"""
+    context.ensure_object(dict)
+
+    context.obj['animated'] = animated
+
+
+@interactive.command()
+@click.pass_context
+def recommendation_diversity(context):
     n_users = context.obj['n_users']
     local_scheduler = context.obj['local_scheduler']
     name = context.obj['name']
+    animated = context.obj['animated']
     
     msd_dataset = MsdDataset(name, n_users=n_users)
 
@@ -249,20 +513,20 @@ def recommendation_diversity(context, animated):
 
 
 @interactive.command()
-@click.option(
-    '--animated', 
-    type=click.Choice(['reco-volume']),
-    default='reco-volume', 
-    help='Choose the variable to change during the animation'
-)
 @click.pass_context
-def diversity_increase(context, animated):
+def diversity_increase(context):
     n_users = context.obj['n_users']
     local_scheduler = context.obj['local_scheduler']
     name = context.obj['name']
+    animated = context.obj['animated']
+
     msd_dataset = MsdDataset(name, n_users=n_users)
 
-    div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler)
+    if animated == 'latent-factors':
+        div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler)
+    
+    elif animated == 'reco-volume':
+        div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler)
 
 
 if __name__ == '__main__':
