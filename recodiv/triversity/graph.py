@@ -10,6 +10,7 @@ import csv
 import pickle
 from pathlib import Path
 from time import perf_counter
+from typing import Dict
 
 import numpy as np
 import pandas as pd
@@ -435,21 +436,14 @@ class NPartiteGraph:
         :param path: the ids of the sets ("layers") to be traversed (in given order) by the spread.
         :param progress: show the progress via tqdm
         """
-        
-        if path in self.res:
-            print("Already computed")
-            return self.res[path]
 
         self._div_init(self.last_id[path[0]], self.last_id[path[-1]])
 
         for node, neighbors in tqdm(self.graphs[path[0]][path[1]].items(), disable=not(progress), desc='Computing diversities'):            
             distribution = self._spread_path(neighbors, path[1:])
             self._div_add(node, distribution)
-        
-        res = self._div_return()
-        self.res[path] = res
 
-        return res
+        return self._div_return()
 
     def spread_node(self, node_hash, path):
         """Compute the distributions of reached nodes in the layer path[-1] for
@@ -500,7 +494,7 @@ class NPartiteGraph:
 
 
 class IndividualHerfindahlDiversities(NPartiteGraph):
-    def _diversity_measure(self, distribution):
+    def _diversity_measure(self, distribution: Dict[int, float]):
         """Compute the Herfindahl diversity of a node with the given neighbors distribution.
 
         :param distribution: a dictionnary with nodes as keys and probability as
@@ -509,8 +503,20 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
         :returns: a float representing the computed diversity
         """
 
-        s = sum(x**2 for x in distribution.values())
-        diversity = 1 / s if s != 0 else 0
+        if self.alpha != 1 and 0 < self.alpha < float('inf'):
+            s = sum(x**self.alpha for x in distribution.values())
+            diversity = s**(1 / (1 - self.alpha)) if s != 0 else 0
+
+        elif self.alpha == 0:
+            diversity = sum(1 for x in distribution.values() if x > 0)
+
+        elif self.alpha == 1:
+            s = np.prod(x**x for x in distribution.values())
+            diversity = 1 / s if s != 0 else 0
+
+        elif self.alpha == float('inf'):
+            s = max(distribution.values())
+            diversity = 1 / s if s != 0 else 0
 
         return diversity
          
@@ -547,15 +553,20 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
         
         return diversities
 
-    def diversities(self, path, progress=True):
-        """Compute the Herfindal diversity of each node in the first set
+    def diversities(self, path, alpha=2, progress=True):
+        """Compute the individual diversity of each node in the first set
         traversed by the path.
 
         :param path: the ids of the sets ("layers") to be traversed (in given
             order) by the spread.
 
+        :param alpha: the order of the diversity in the true diversity measure
+            formula
+
         :returns: a dict such that result[node_hash] = diversity value
         """
+
+        self.alpha = alpha
 
         result = {}
         result_by_id = self.spread_and_divs(path, progress=progress)
