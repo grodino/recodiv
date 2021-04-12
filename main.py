@@ -487,12 +487,19 @@ def clear_figures(context):
     default='reco-volume', 
     help='Choose the variable to change during the animation'
 )
+@click.option(
+    '--alpha',
+    type=float,
+    default=2,
+    help='The order of the diversity to use.'
+)
 @click.pass_context
-def interactive(context: click.Context, animated: str):
+def interactive(context: click.Context, animated: str, alpha: float):
     """Lauch the interactive graphs server"""
     context.ensure_object(dict)
 
     context.obj['animated'] = animated
+    context.obj['alpha'] = alpha
 
 
 @interactive.command()
@@ -519,14 +526,15 @@ def diversity_increase(context):
     local_scheduler = context.obj['local_scheduler']
     name = context.obj['name']
     animated = context.obj['animated']
+    alpha = context.obj['alpha']
 
     msd_dataset = MsdDataset(name, n_users=n_users)
 
     if animated == 'latent-factors':
-        div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler)
+        div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler, alpha)
     
     elif animated == 'reco-volume':
-        div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler)
+        div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler, alpha)
 
 
 if __name__ == '__main__':

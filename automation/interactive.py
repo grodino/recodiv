@@ -168,7 +168,7 @@ def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
     app.run_server(debug=True, use_reloader=False)
 
 
-def div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
+def div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False, alpha=2):
     """Interactive plot of the recommendation diversity vs the user diversity 
     for different number of latent factors"""
 
@@ -180,6 +180,7 @@ def div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=Fals
     # it in the scheduler
     data_task = ComputeDiversityIncreaseVsUserDiversityVsLatentFactors(
         dataset=msd_dataset,
+        alpha=alpha,
         model_n_iterations=n_iterations,
         model_n_factors_values=N_FACTORS_VALUES,
         model_regularization=regularization,
@@ -464,7 +465,7 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
     app.run_server(debug=True, use_reloader=False) 
 
 
-def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
+def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False, alpha=2):
     """Interactive plot of the recommendation diversity vs the user diversity 
     for different number of latent factors"""
 
@@ -477,6 +478,7 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
     # it in the scheduler
     data_task = ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(
         dataset=msd_dataset,
+        alpha=alpha,
         model_n_iterations=n_iterations,
         model_n_factors=n_factors,
         model_regularization=regularization,
