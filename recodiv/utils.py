@@ -1,6 +1,8 @@
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 from matplotlib import pyplot as pl
 
@@ -22,6 +24,7 @@ def get_msd_song_info():
 
     return songs_info
 
+
 def print_song_info(songs_ids, graph, songs_info):
     """Print song title artist and tags"""
 
@@ -38,17 +41,18 @@ def print_song_info(songs_ids, graph, songs_info):
         print()
 
 
-def generate_graph(user_item, item_tag, graph=None):
+def generate_graph(user_item: pd.DataFrame, item_tag: Optional[pd.DataFrame]=None, graph=None):
     """Generate a graph from user -> item and item -> tag links"""
 
     if graph is None:
-        graph = IndividualHerfindahlDiversities(4)
+        graph = IndividualHerfindahlDiversities(3)
 
     for link in tqdm(user_item.itertuples(), desc="user->item", total=len(user_item)):
         graph.add_link(0, link.user, 1, link.item, link.rating)
 
-    for link in tqdm(item_tag.itertuples(), desc="item->tag", total=len(item_tag)):
-        graph.add_link(1, link.item, 2, link.tag, link.weight)
+    if item_tag is not None:
+        for link in tqdm(item_tag.itertuples(), desc="item->tag", total=len(item_tag)):
+            graph.add_link(1, link.item, 2, link.tag, link.weight)
 
     return graph
 

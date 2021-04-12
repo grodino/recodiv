@@ -508,7 +508,7 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
             diversity = s**(1 / (1 - self.alpha)) if s != 0 else 0
 
         elif self.alpha == 0:
-            diversity = sum(1 for x in distribution.values() if x > 0)
+            diversity = len(distribution)
 
         elif self.alpha == 1:
             s = np.prod(x**x for x in distribution.values())
@@ -577,3 +577,36 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
         del result_by_id
 
         return result
+
+
+if __name__ == '__main__':
+
+    listening_graph = IndividualHerfindahlDiversities(3)
+
+    # User 0
+    listening_graph.add_link(0, 'user_0', 1, 'item_0', 1)
+    listening_graph.add_link(0, 'user_0', 1, 'item_1', 1)
+
+    # user 1
+    listening_graph.add_link(0, 'user_1', 1, 'item_2', 1)
+    listening_graph.add_link(0, 'user_1', 1, 'item_3', 1)
+
+    # Tag 0
+    listening_graph.add_link(2, 'tag_0', 1, 'item_1', 1)
+
+    # Tag 1 
+    listening_graph.add_link(2, 'tag_1', 1, 'item_0', 1)
+    listening_graph.add_link(2, 'tag_1', 1, 'item_1', 1)
+    listening_graph.add_link(2, 'tag_1', 1, 'item_2', 1)
+
+    # Tag 2
+    listening_graph.add_link(2, 'tag_2', 1, 'item_1', 1)
+    listening_graph.add_link(2, 'tag_2', 1, 'item_2', 1)
+    listening_graph.add_link(2, 'tag_2', 1, 'item_3', 1)
+
+    listening_graph.normalise_all()
+    print(listening_graph.spread_node('user_1', (0, 1, 2)))
+    assert(listening_graph.spread_node('user_1', (0, 1, 2)) == {'tag_1': 1/4, 'tag_2': 3/4})
+
+    print(listening_graph.diversities((0, 1, 2), 0))
+    assert(listening_graph.diversities((0, 1, 2), 0) == {'user_0': 3, 'user_1': 2})
