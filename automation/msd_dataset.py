@@ -297,8 +297,12 @@ class ComputeUsersDiversities(luigi.Task):
     )
 
     def output(self):
+        # Avoid issues where 0.0 and 0 lead to different file titles
+        alpha = float(self.alpha)
+        alpha = int(alpha) if alpha.is_integer() else alpha
+
         return luigi.LocalTarget(
-            self.dataset.data_folder.joinpath(f'users_diversities{self.alpha}.csv')
+            self.dataset.data_folder.joinpath(f'users_diversities{alpha}.csv')
         )
 
     def requires(self):
@@ -365,8 +369,12 @@ class ComputeTagsDiversities(luigi.Task):
     )
 
     def output(self):
+        # Avoid issues where 0.0 and 0 lead to different file titles
+        alpha = float(self.alpha)
+        alpha = int(alpha) if alpha.is_integer() else alpha
+
         return luigi.LocalTarget(
-            self.dataset.data_folder.joinpath(f'tags_diversities{self.alpha}.csv')
+            self.dataset.data_folder.joinpath(f'tags_diversities{alpha}.csv')
         )
 
     def requires(self):
@@ -576,12 +584,16 @@ class ComputeTrainTestUserDiversity(luigi.Task):
         )
 
     def output(self):
+        # Avoid issues where 0.0 and 0 lead to different file titles
+        alpha = float(self.alpha)
+        alpha = int(alpha) if alpha.is_integer() else alpha
+
         return {
             'train': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(f'trainset_users_diversities{self.alpha}.csv')
+                self.dataset.data_folder.joinpath(f'trainset_users_diversities{alpha}.csv')
             ),
             'test': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(f'testset_users_diversities{self.alpha}.csv')
+                self.dataset.data_folder.joinpath(f'testset_users_diversities{alpha}.csv')
             ),
         }
 
@@ -1407,8 +1419,13 @@ class ComputeRecommendationUsersDiversities(luigi.Task):
 
     def output(self):
         model = Path(self.input().path).parent
+
+        # Avoid issues where 0.0 and 0 lead to different file titles
+        alpha = float(self.alpha)
+        alpha = int(alpha) if alpha.is_integer() else alpha
+
         return luigi.LocalTarget(
-            model.joinpath(f'recommendations-{self.n_recommendations}-users_diversities{self.alpha}.csv')
+            model.joinpath(f'recommendations-{self.n_recommendations}-users_diversities{alpha}.csv')
         )
 
     def run(self):
@@ -1702,8 +1719,13 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
         
     def output(self):
         model = Path(self.input().path).parent
+        
+        # Avoid issues where 0.0 and 0 lead to different file titles
+        alpha = float(self.alpha)
+        alpha = int(alpha) if alpha.is_integer() else alpha
+
         return luigi.LocalTarget(
-            model.joinpath(f'listenings-recommendations-{self.n_recommendations}-users_diversities{self.alpha}.csv')
+            model.joinpath(f'listenings-recommendations-{self.n_recommendations}-users_diversities{alpha}.csv')
         )
 
     def run(self):
@@ -1772,8 +1794,13 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
         
     def output(self):
         model = Path(self.input()['with_recommendations'].path).parent
+
+        # Avoid issues where 0.0 and 0 lead to different file titles
+        alpha = float(self.alpha)
+        alpha = int(alpha) if alpha.is_integer() else alpha
+
         return luigi.LocalTarget(
-            model.joinpath(f'listenings-recommendations-{self.n_recommendations}-users_diversities{self.alpha}_increase.csv')
+            model.joinpath(f'listenings-recommendations-{self.n_recommendations}-users_diversities{alpha}_increase.csv')
         )
 
     def run(self):
@@ -2623,6 +2650,169 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
 
         pl.xlabel('Number of recommendations per user')
         pl.ylabel('diversity')
+        pl.legend()
+
+        pl.savefig(self.output()['png'].path, format='png', dpi=300)
+        tikzplotlib.save(self.output()['latex'].path)
+        pl.clf()
+
+        del data
+
+
+class ComputeDiversityIncreaseVsRecommendationVolume(luigi.Task):
+    """Compute the user diversity of recommendations against the number of
+       recommendations made"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations_values = luigi.parameter.ListParameter(
+        description='List of number of recommendation to generate for each user at each training iteration if evaluate_iterations==True'
+    )
+
+    def requires(self):
+        return {
+            'dataset': ImportDataset(dataset=self.dataset),
+            'graph': BuildTrainTestGraphs(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction
+            ),
+            'recommendations': GenerateRecommendations(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=max(self.n_recommendations_values)
+            ),
+        }
+
+    def output(self):
+        aggregated = self.dataset.base_folder.joinpath('aggregated')
+        return luigi.LocalTarget(aggregated.joinpath(
+            f'diversity{self.alpha}-increase_vs_{self.n_recommendations_values}reco-{self.model_n_factors}factors.csv'
+        ))
+    
+    def run(self):
+        self.output().makedirs()
+        
+        item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
+        recommendations = pd.read_csv(self.input()['recommendations'].path) \
+            .rename(columns={'score': 'rating'})
+
+        graph = IndividualHerfindahlDiversities.recall(self.input()['graph']['test'].path)
+
+        mean_diversities = []
+        
+        # Not very otpimized, but constructing the graph incrementally would
+        # require to modify triversity
+        # TODO: optimize
+        for n_recommendations in self.n_recommendations_values:
+            user_item = recommendations[recommendations['rank'] <= n_recommendations]
+            
+            graph_with_reco = generate_graph(user_item, graph=graph)
+            graph_with_reco.normalise_all()
+            diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
+            
+            mean_diversities.append(
+                sum(diversities.values()) / len(diversities)
+            )
+
+            del diversities
+        
+        pd.DataFrame({
+            'n_recommendations': self.n_recommendations_values,
+            'increase': mean_diversities
+        }).to_csv(self.output().path, index=False)
+
+        del item_tag, recommendations
+
+
+class PlotDiversityIncreaseVsRecommendationVolume(luigi.Task):
+    """Plot the user diversity of recommendations against the number of
+       recommendations made"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    n_factors_values = luigi.parameter.ListParameter(
+        description='List of number of user/item latent factors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations_values = luigi.parameter.ListParameter(
+        description='List of number of recommendation to generate for each user at each training iteration if evaluate_iterations==True'
+    )
+
+    def requires(self):
+        tasks = {}
+
+        for n_factors in self.n_factors_values:
+            tasks[n_factors] = ComputeDiversityIncreaseVsRecommendationVolume(
+                dataset=self.dataset,
+                alpha=self.alpha,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations_values=self.n_recommendations_values
+            )
+        
+        return tasks
+    
+    def output(self):
+        figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+        return {
+            'png': luigi.LocalTarget(figures.joinpath(
+                f'recommendations_diversity{self.alpha}-increase_vs_{self.n_recommendations_values}reco-{self.n_factors_values}factors.png'
+            )),
+            'latex': luigi.LocalTarget(figures.joinpath(
+                f'recommendations_diversity{self.alpha}-increase_vs_{self.n_recommendations_values}reco-{self.n_factors_values}factors.tex'
+            ))
+        }
+
+    def run(self):
+        self.output()['png'].makedirs()
+
+        for n_factors, file in self.input().items():
+            data = pd.read_csv(file.path)
+
+            pl.semilogx(data['n_recommendations'], data['increase'], label=f'{n_factors} factors')
+            # pl.plot(data['n_recommendations'], data['diversity'], label=f'{n_factors} factors')
+
+        pl.xlabel('Number of recommendations per user')
+        pl.ylabel('Diversity increase')
         pl.legend()
 
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
