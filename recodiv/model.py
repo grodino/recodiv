@@ -115,7 +115,7 @@ def generate_recommendations(model, test_ratings, n_recommendations=50):
     return batch.recommend(model, users, n_recommendations)
 
 
-def evaluate_model_recommendations(recommendations, test, metrics):
+def evaluate_model_recommendations(recommendations, test, metrics) -> pd.DataFrame:
     """Evaluates a model via its recommendations
     
     :param recommendations: pd.DataFrame with at least the following columns :  

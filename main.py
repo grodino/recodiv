@@ -95,6 +95,26 @@ def report_figures(context):
         ),
     ]
 
+    # User recommendations evaluation scores
+    tasks += [
+        # Best model found
+        PlotUserEvaluationHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        # 200 factors
+        PlotUserEvaluationHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=200,
+            model_regularization=100.0,
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+    ]
+
     # Hyper parameter tuning
     tasks += [
         PlotModelTuning(
@@ -125,6 +145,26 @@ def report_figures(context):
             model_confidence_factor=CONFIDENCE_FACTOR,
             tuning_metric='train_loss',
             tuning_best='min',
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        PlotModelTuning(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors_values=N_FACTORS_VALUES,
+            model_regularization_values=REGULARIZATION_VALUES,
+            model_confidence_factor=CONFIDENCE_FACTOR,
+            tuning_metric='recip_rank',
+            tuning_best='max',
+            n_recommendations=N_RECOMMENDATIONS
+        ),
+        PlotModelTuning(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors_values=N_FACTORS_VALUES,
+            model_regularization_values=REGULARIZATION_VALUES,
+            model_confidence_factor=CONFIDENCE_FACTOR,
+            tuning_metric='precision',
+            tuning_best='max',
             n_recommendations=N_RECOMMENDATIONS
         ),
     ]

@@ -963,6 +963,152 @@ class GeneratePredictions(luigi.Task):
         del test_user_item, model
 
 
+class EvaluateUserRecommendations(luigi.Task):
+    """Compute evaluations metrics on a trained model"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return {
+            'recommendations': GenerateRecommendations(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations,
+                model_confidence_factor=self.model_confidence_factor
+            ),
+            'dataset': GenerateTrainTest(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction
+            )
+        }
+    
+    def output(self):
+        model = Path(self.input()['recommendations'].path).parent
+        
+        return luigi.LocalTarget(
+            model.joinpath(f'users_eval_{self.n_recommendations}-recommendations.csv'),
+            format=Nop
+        )
+    
+    def run(self):
+        self.output().makedirs()
+
+        recommendations = pd.read_csv(self.input()['recommendations'].path)
+        test = pd.read_csv(self.input()['dataset']['test'].path)
+
+        # # NOTE : Issue appears when the two following condition is met :
+        # #   - a user had only one listening and it is put in the test set
+        # # NOTE : seems not to be necessary anymore thanks to the better train/test sampling
+        # #
+        # # Then, the model will not know the user, thus will not be able to
+        # # recommend songs to this user. Therefore, to avoid issues, we simply
+        # # discard users with no recommendations from the test set
+        # recommendations.set_index('user', inplace=True)
+        # test.set_index('user', inplace=True)
+        
+        # missing = test.index.difference(recommendations.index)
+        # common = test.index.intersection(recommendations.index).unique()
+        # print(f'In test set but not recommended : {missing}')
+
+        # recommendations = recommendations.loc[common].reset_index()
+        # test.reset_index(inplace=True)
+
+        metrics_names = ['ndcg', 'precision', 'recip_rank', 'recall']
+        metrics = evaluate_model_recommendations(
+            recommendations,
+            test, 
+            metrics_names
+        )[metrics_names].reset_index()
+        
+        metrics.to_csv(self.output().path, index=False)
+
+        del recommendations, test, metrics
+
+
+class PlotUserEvaluationHistogram(luigi.Task):
+    """Plot the histogram of an evaluation metric among all users"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return EvaluateUserRecommendations(
+            dataset=self.dataset,
+            model_n_iterations=self.model_n_iterations,
+            model_n_factors=self.model_n_factors,
+            model_regularization=self.model_regularization,
+            model_user_fraction=self.model_user_fraction,
+            model_confidence_factor=self.model_confidence_factor,
+            n_recommendations=self.n_recommendations
+        )
+
+    def output(self):
+        model = Path(self.input().path).parent.joinpath('figures/')
+        
+        return luigi.LocalTarget(
+            model.joinpath(f'users_eval_{self.n_recommendations}-recommendations_histogram.png'),
+            format=Nop
+        )
+
+    def run(self):
+        self.output().makedirs()
+
+        metrics = pd.read_csv(self.input().path)
+
+        fig, ax = plot_histogram(metrics['ndcg'].to_numpy(), min_quantile=0, max_quantile=0.99)
+        ax.set_xlabel('NDCG value')
+        ax.set_ylabel('User count')
+        fig.savefig(self.output().path, format='png', dpi=300)
+
+
 class EvaluateModel(luigi.Task):
     """Compute evaluations metrics on a trained model"""
 
@@ -1011,23 +1157,19 @@ class EvaluateModel(luigi.Task):
                 train_predictions=True,
                 model_confidence_factor=self.model_confidence_factor
             ),
-            'recommendations': GenerateRecommendations(
+            'user_eval' : EvaluateUserRecommendations(
                 dataset=self.dataset,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations,
-                model_confidence_factor=self.model_confidence_factor
-            ),
-            'dataset': GenerateTrainTest(
-                dataset=self.dataset,
-                user_fraction=self.model_user_fraction
+                model_confidence_factor=self.model_confidence_factor,
+                n_recommendations=self.n_recommendations
             )
         }
     
     def output(self):
-        model = Path(self.input()['recommendations'].path).parent
+        model = Path(self.input()['model']['model'].path).parent
         
         return luigi.LocalTarget(
             model.joinpath(f'{self.n_recommendations}-recommendations_model_eval.json'),
@@ -1037,35 +1179,14 @@ class EvaluateModel(luigi.Task):
     def run(self):
         self.output().makedirs()
 
-        recommendations = pd.read_csv(self.input()['recommendations'].path)
         test_predictions = pd.read_csv(self.input()['predictions']['test'].path)
         train_predictions = pd.read_csv(self.input()['predictions']['train'].path)
-        test = pd.read_csv(self.input()['dataset']['test'].path)
 
         model = binpickle.load(self.input()['model']['model'].path)
 
-        # NOTE : Issue appears when the two following condition is met :
-        #   - a user had only one listening and it is put in the test set
-        #
-        # Then, the model will not know the user, thus will not be able to
-        # recommend songs to this user. Therefore, to avoid issues, we simply
-        # discard users with no recommendations from the test set
-        recommendations.set_index('user', inplace=True)
-        test.set_index('user', inplace=True)
-        
-        missing = test.index.difference(recommendations.index)
-        common = test.index.intersection(recommendations.index).unique()
-        print(f'In test set but not recommended : {missing}')
-
-        recommendations = recommendations.loc[common].reset_index()
-        test.reset_index(inplace=True)
-
-        metrics_names = ['ndcg', 'precision']
-        metrics = evaluate_model_recommendations(
-            recommendations,
-            test, 
-            metrics_names
-        )[metrics_names].mean()
+        metrics: pd.DataFrame = pd.read_csv(self.input()['user_eval'].path)
+        metrics = metrics.set_index('user')
+        metrics = metrics.mean()
 
         metrics['test_loss'] = evaluate_model_loss(model, test_predictions)
         metrics['train_loss'] = evaluate_model_loss(model, train_predictions)
@@ -1076,7 +1197,7 @@ class EvaluateModel(luigi.Task):
             indent=4
         )
 
-        del recommendations, test, missing, common, metrics
+        del metrics
 
 
 class TuneModelHyperparameters(luigi.Task):
