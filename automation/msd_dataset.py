@@ -1433,6 +1433,88 @@ class PlotModelTuning(luigi.Task):
         del fig, ax, metrics, metrics_matrix
 
 
+class PlotModelEvaluationVsLatentFactors(luigi.Task):
+    """Compute model evaluation metrics against the number of factors"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors_values = luigi.parameter.ListParameter(
+        description='List of numer of user/item latent factors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        req = {}
+
+        for n_factors in self.model_n_factors_values:
+            req[n_factors] = EvaluateModel(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            )
+
+        return req
+
+    def output(self):
+        aggregated = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+
+        return luigi.LocalTarget(
+            aggregated.joinpath(
+                f'{self.model_n_factors_values}' \
+                    + f'factors_{self.model_regularization}' \
+                    + f'reg_{self.n_recommendations}' \
+                    + f'reco_{self.model_confidence_factor}' \
+                    + f'model_eval.png'),
+            format=Nop
+        )
+    
+    def run(self):
+        self.output().makedirs()
+
+        data: pd.DataFrame = pd.DataFrame(
+            index=self.model_n_factors_values, 
+            columns=['NDCG', 'precision']
+        )
+
+        for n_factors in self.model_n_factors_values:
+            metric = pd.read_json(
+                self.input()[n_factors].path, 
+                orient='index'
+            ).transpose()
+
+            data.loc[n_factors, 'NDCG'] = float(metric['ndcg'][0])
+            data.loc[n_factors, 'precision'] = float(metric['precision'][0])
+            data.loc[n_factors, 'recip_rank'] = float(metric['recip_rank'][0])
+            data.loc[n_factors, 'test_loss'] = float(metric['test_loss'][0])
+
+        data = data.subtract(data.min())
+        data = data.divide(data.max())
+        
+        data.plot(xlabel="number of factors", ylabel="metric (scaled and centered)", logx=True)
+        pl.savefig(self.output().path, format='png', dpi=300)
+
+
 ################################################################################
 # RECOMMENDATIONS ANALYSIS                                                     #
 ################################################################################
@@ -2242,13 +2324,13 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
             data = data.subtract(data.min())
             # data = data.divide(data.std())
 
-            data.plot(xlabel="number of factors", ylabel="diversity (centered)", logx=True)
+            data.plot(xlabel="number of factors", ylabel="diversity (translated)", logx=True)
         else:
             data.plot(xlabel="number of factors", ylabel="diversity", logx=True)
             
         pl.savefig(self.output().path, format='png', dpi=300)
 
-# OK
+# Deprecated
 class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
     """Plot the mean user diversity increase after recommendation as a function of the
        number of latent factors"""

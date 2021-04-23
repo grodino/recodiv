@@ -183,6 +183,18 @@ def report_figures(context):
         ),
     ]
 
+    # Model performance for different number of latent factors
+    tasks += [
+        PlotModelEvaluationVsLatentFactors(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors_values=N_FACTORS_VALUES,
+            model_regularization=OPT_REGULARIZATION,
+            model_confidence_factor=CONFIDENCE_FACTOR,
+            n_recommendations=N_RECOMMENDATIONS
+        )
+    ]
+
     # Recommendation diversity histogram at equilibrium (optimal parameters)
     tasks += [
         PlotRecommendationsUsersDiversitiesHistogram(
