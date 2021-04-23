@@ -105,6 +105,20 @@ def report_figures(context):
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS
         ),
+        PlotUserEvaluationHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500
+        ),
+        PlotUserEvaluationHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=1_000
+        ),
         # 200 factors
         PlotUserEvaluationHistogram(
             dataset=msd_dataset,
@@ -501,7 +515,7 @@ def report_figures(context):
     ]
 
     # Recommendation diversity vs recommendation volume at equilibrium
-    tasks += [
+    deprecated = [
         # Herfindal diversity
         PlotDiversityVsRecommendationVolume(
             dataset=msd_dataset,
@@ -532,7 +546,7 @@ def report_figures(context):
     ]
 
     # Diversity increase vs recommendation volume at equilibrium
-    tasks += [
+    deprecated = [
         PlotDiversityIncreaseVsRecommendationVolume(
             dataset=msd_dataset,
             alpha=0,
@@ -562,31 +576,31 @@ def report_figures(context):
     # Recommendation diversity versus the number of latent factors used in the model
     tasks += [
         # Herfindal
-        PlotDiversityVsLatentFactors(
+        PlotRecommendationDiversityVsLatentFactors(
             dataset=msd_dataset,
             alpha=2,
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
+            n_recommendations_values=[50, 200, 1_000]
         ),
         # Richness
-        PlotDiversityVsLatentFactors(
+        PlotRecommendationDiversityVsLatentFactors(
             dataset=msd_dataset,
             alpha=0,
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
+            n_recommendations_values=[50, 200, 1_000]
         ),
         # Berger-Parker
-        PlotDiversityVsLatentFactors(
+        PlotRecommendationDiversityVsLatentFactors(
             dataset=msd_dataset,
             alpha=float('inf'),
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
+            n_recommendations_values=[50, 200, 1_000]
         ),
     ]
 

@@ -41,7 +41,7 @@ def print_song_info(songs_ids, graph, songs_info):
         print()
 
 
-def generate_graph(user_item: pd.DataFrame, item_tag: Optional[pd.DataFrame]=None, graph=None):
+def generate_graph(user_item: pd.DataFrame, item_tag: Optional[pd.DataFrame]=None, graph=None) -> IndividualHerfindahlDiversities:
     """Generate a graph from user -> item and item -> tag links"""
 
     if graph is None:
@@ -55,6 +55,17 @@ def generate_graph(user_item: pd.DataFrame, item_tag: Optional[pd.DataFrame]=Non
             graph.add_link(1, link.item, 2, link.tag, link.weight)
 
     return graph
+
+
+def generate_recommendations_graph(recommendations: pd.DataFrame, item_tag: Optional[pd.DataFrame]=None) -> IndividualHerfindahlDiversities:
+    """Generate the user-recommendations-tags graph"""
+
+    n_recommendations = int(recommendations['rank'].max())
+
+    reco_user_item = recommendations.copy()
+    reco_user_item['rating'] = n_recommendations - recommendations['rank'] + 1
+
+    return generate_graph(reco_user_item[['user', 'item', 'rating']], item_tag)
 
 
 def dataset_info(graph):

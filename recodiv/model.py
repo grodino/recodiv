@@ -18,12 +18,6 @@ from lenskit.metrics.predict import rmse
 from lenskit.algorithms import Recommender
 from lenskit.algorithms.basic import TopN, Memorized
 
-
-# from recodiv.utils import print_song_info
-# from recodiv.utils import get_msd_song_info
-
-
-# util.log_to_stderr()
 METRICS = {
     'ndcg': topn.ndcg,
     'recall': topn.recall,
@@ -124,7 +118,7 @@ def evaluate_model_recommendations(recommendations, test, metrics) -> pd.DataFra
     :param metrics: list. A list of metrics' names (see recodiv.model.METRICS)
     """
 
-    analysis = topn.RecListAnalysis()
+    analysis = topn.RecListAnalysis(n_jobs=20)
     users = test.user.unique()
     rec_users = recommendations['user'].unique()
 
