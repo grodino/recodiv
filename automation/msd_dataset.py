@@ -19,6 +19,7 @@ from recodiv.utils import plot_histogram
 from recodiv.utils import generate_graph
 from recodiv.utils import get_msd_song_info
 from recodiv.utils import generate_recommendations_graph
+from recodiv.utils import build_recommendations_listenings_graph
 from recodiv.model import train_model
 from recodiv.model import split_dataset
 from recodiv.model import tags_distance
@@ -1518,7 +1519,6 @@ class PlotModelEvaluationVsLatentFactors(luigi.Task):
 ################################################################################
 # RECOMMENDATIONS ANALYSIS                                                     #
 ################################################################################
-# OK
 class BuildRecommendationGraph(luigi.Task):
     """Build the user-song-tag graph for the recommendations.
 
@@ -1579,7 +1579,7 @@ class BuildRecommendationGraph(luigi.Task):
 
         del graph
 
-# OK
+
 class ComputeRecommendationDiversities(luigi.Task):
     """Compute the diversity of the songs recommended to users"""
 
@@ -1642,7 +1642,7 @@ class ComputeRecommendationDiversities(luigi.Task):
 
         del graph, diversities
 
-# OK
+
 class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
     """Plot the histogram of recommendations diversity for each user"""
 
@@ -1710,7 +1710,7 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         
         # del fig, ax, diversities
 
-# OK
+
 class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
     """Plot the diversity of the recommendations associated to each user with
     respect to the user diversity before recommendations (ie train set
@@ -1806,7 +1806,7 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
 
         del diversities, reco_diversities, merged
 
-# OK
+
 class BuildRecommendationsWithListeningsGraph(luigi.Task):
     """Add the recommendations to the train user-item-tag graph
 
@@ -1867,25 +1867,23 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
         self.output().makedirs()
 
         graph = IndividualHerfindahlDiversities.recall(
-            self.input()['graph']['train'].path
+            self.input()['graph']['test'].path
         )
 
         # Used to compute the volume a user would have listened to if listening its music
         user_item = pd.read_csv(self.input()['train_test']['test'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
      
-        # Normalise the recommendations by the volume the user had prior to the
-        # recommendations
-        reco_user_item = rank_to_weight(user_item, recommendations)[['user', 'item', 'weight']] \
-            .rename(columns={'weight': 'rating'})
-
-        # No need to give the item_tag info because it is already in the graph
-        graph = generate_graph(reco_user_item, item_tag=None, graph=graph)
+        graph = build_recommendations_listenings_graph(
+            graph,
+            user_item,
+            recommendations
+        )
         graph.persist(self.output().path)
 
-        del graph, user_item, reco_user_item, recommendations
+        del graph, user_item, recommendations
 
-# OK
+
 class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
     """Compute the diversity of the users who were recommended, assuming they
        listened to all recommendations"""
@@ -1952,7 +1950,7 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
 
         del graph, diversities
 
-# OK
+
 class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
     """Compare the diversity of a user if they start listenings only to
     recommendations or if they continue to listen their music"""
@@ -1993,7 +1991,7 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             ),
-            'original': ComputeUsersDiversities(
+            'original': ComputeTrainTestUserDiversity(
                 dataset=self.dataset, 
                 alpha=self.alpha,
             )
@@ -2013,7 +2011,7 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
     def run(self):
         with_recommendations = pd.read_csv(self.input()['with_recommendations'].path) \
             .set_index('user')
-        original = pd.read_csv(self.input()['original'].path) \
+        original = pd.read_csv(self.input()['original']['test'].path) \
             .set_index('user')
 
         deltas = (with_recommendations['diversity'] - original['diversity']) \
@@ -2024,7 +2022,7 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
 
         del original, deltas
 
-# OK
+
 class PlotDiversitiesIncreaseHistogram(luigi.Task):
     """Plot the histogram of recommendations diversity for each user"""
 
@@ -2083,7 +2081,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         
         del fig, ax, deltas
 
-# OK
+
 class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
     """Plot the user diversity increase with respect to the user diversity
        before recommendations"""
@@ -2190,7 +2188,6 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
 ################################################################################
 # HYPERPARAMETERS ANALYSIS                                                     #
 ################################################################################
-# OK
 class ComputeRecommendationDiversityVsLatentFactors(luigi.Task):
     """Plot the mean user diversity of the recommendations as a function of the
        number of latent factors"""
@@ -2269,7 +2266,7 @@ class ComputeRecommendationDiversityVsLatentFactors(luigi.Task):
 
         data.to_csv(self.output().path)
 
-# OK
+
 class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
     """Plot the mean user diversity of the recommendations as a function of the
        number of latent factors"""
@@ -2437,7 +2434,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
         pl.savefig(self.output().path, format='png', dpi=300)
         pl.clf()
 
-# OK
+
 class PlotDiversityVsRegularization(luigi.Task):
     """Plot the mean user diversity of the recommendations as a function of the
        number of latent factors"""
@@ -2544,7 +2541,7 @@ class PlotDiversityVsRegularization(luigi.Task):
         pl.savefig(self.output().path, format='png', dpi=300)
         pl.clf()
 
-# OK
+
 class PlotDiversityIncreaseVsRegularization(luigi.Task):
     """Plot the mean user diversity of the recommendations as a function of the
        number of latent factors"""
@@ -2713,24 +2710,23 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
             .rename(columns={'score': 'rating'})
 
         graph = IndividualHerfindahlDiversities.recall(
-            self.input()['graph']['train'].path
+            self.input()['graph']['test'].path
         )
 
         # To compute the user volume in the rank to weight conversion
-        user_item = pd.read_csv(self.input()['train_test']['train'].path)
+        user_item = pd.read_csv(self.input()['train_test']['test'].path)
         mean_diversities = []
         
         for n_recommendations in self.n_recommendations_values:
             recommendations = recommendations[recommendations['rank'] <= n_recommendations]
-     
-            # Normalise the recommendations by the volume the user had prior to the
-            # recommendations
-            user_reco = rank_to_weight(user_item, recommendations)[['user', 'item', 'weight']] \
-            .rename(columns={'weight': 'rating'})
-            
-            graph_with_reco = generate_graph(user_reco, graph=graph)
+
+            graph_with_reco = build_recommendations_listenings_graph(
+                graph,
+                user_item,
+                recommendations
+            )
             graph_with_reco.normalise_all()
-            diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
+            diversities = graph_with_reco.diversities((0, 1, 2), alpha=self.alpha)
             
             mean_diversities.append(
                 sum(diversities.values()) / len(diversities)
