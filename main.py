@@ -527,7 +527,7 @@ def report_figures(context):
     ]
 
     # Recommendation diversity vs recommendation volume at equilibrium
-    deprecated = [
+    tasks += [
         # Herfindal diversity
         PlotDiversityVsRecommendationVolume(
             dataset=msd_dataset,
@@ -550,7 +550,7 @@ def report_figures(context):
         PlotDiversityVsRecommendationVolume(
             dataset=msd_dataset,
             alpha=float('inf'),
-            model_n_iterations=N_ITERATIONS,
+            model_n_iterations=N_ITERATIONS,    
             n_factors_values=[5, 20, 500, 3_000],
             model_regularization=OPT_REGULARIZATION,
             n_recommendations_values=N_RECOMMENDATIONS_VALUES

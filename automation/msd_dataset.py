@@ -2658,7 +2658,7 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
         pl.savefig(self.output().path, format='png', dpi=300)
         pl.clf()
 
-# Deprecated
+
 class ComputeDiversityVsRecommendationVolume(luigi.Task):
     """Compute the user diversity of recommendations against the number of
        recommendations made"""
@@ -2690,14 +2690,7 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
 
     def requires(self):
         return {
-            'graph': BuildTrainTestGraphs(
-                dataset=self.dataset,
-                user_fraction=self.model_user_fraction
-            ),
-            'train_test': GenerateTrainTest(
-                dataset=self.dataset,
-                user_fraction=self.model_user_fraction
-            ),
+            'dataset': ImportDataset(dataset=self.dataset),
             'recommendations': GenerateRecommendations(
                 dataset=self.dataset,
                 model_n_iterations=self.model_n_iterations,
@@ -2709,9 +2702,9 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
         }
 
     def output(self):
-        aggregated = self.dataset.base_folder.joinpath('aggregated')
-        return luigi.LocalTarget(aggregated.joinpath(
-            f'recommendations_diversity{self.alpha}_vs_{self.n_recommendations_values}reco-{self.model_n_factors}factors.csv'
+        model = Path(self.input()['recommendations'].path).parent
+        return luigi.LocalTarget(model.joinpath(
+            f'recommendations_diversity{self.alpha}_vs_{self.n_recommendations_values}reco.csv'
         ))
     
     def run(self):
@@ -2719,30 +2712,23 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
         recommendations = pd.read_csv(self.input()['recommendations'].path) \
             .rename(columns={'score': 'rating'})
 
-        graph = IndividualHerfindahlDiversities.recall(
-            self.input()['graph']['test'].path
-        )
-
         # To compute the user volume in the rank to weight conversion
-        user_item = pd.read_csv(self.input()['train_test']['test'].path)
+        item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         mean_diversities = []
         
         for n_recommendations in self.n_recommendations_values:
             recommendations = recommendations[recommendations['rank'] <= n_recommendations]
 
-            graph_with_reco = build_recommendations_listenings_graph(
-                graph,
-                user_item,
-                recommendations
-            )
-            graph_with_reco.normalise_all()
-            diversities = graph_with_reco.diversities((0, 1, 2), alpha=self.alpha)
+            graph = generate_recommendations_graph(recommendations, item_tag)
+
+            graph.normalise_all()
+            diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
             
             mean_diversities.append(
                 sum(diversities.values()) / len(diversities)
             )
 
-            del diversities
+            del diversities, graph
 
         pd.DataFrame({
             'n_recommendations': self.n_recommendations_values,
@@ -2751,7 +2737,7 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
 
         del recommendations
 
-# Deprecated
+
 class PlotDiversityVsRecommendationVolume(luigi.Task):
     """Plot the user diversity of recommendations against the number of
        recommendations made"""
