@@ -594,7 +594,7 @@ def report_figures(context):
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations_values=[50, 200, 1_000]
+            n_recommendations_values=[10, 50, 200]
         ),
         # Richness
         PlotRecommendationDiversityVsLatentFactors(
@@ -603,7 +603,7 @@ def report_figures(context):
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations_values=[50, 200, 1_000]
+            n_recommendations_values=[10, 50, 200]
         ),
         # Berger-Parker
         PlotRecommendationDiversityVsLatentFactors(
@@ -612,7 +612,7 @@ def report_figures(context):
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations_values=[50, 200, 1_000]
+            n_recommendations_values=[10, 50, 200]
         ),
     ]
 

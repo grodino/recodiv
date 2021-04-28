@@ -1743,7 +1743,10 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
 
     def requires(self):
         return {
-            'dataset': ImportDataset(dataset=self.dataset),
+            'train_test': GenerateTrainTest(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction,
+            ),
             'diversity': ComputeTrainTestUserDiversity(
                 dataset=self.dataset,
                 alpha=self.alpha,
@@ -1779,22 +1782,29 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         ).rename(columns={'diversity': 'reco_diversity'})
 
         # compute user volume
-        user_item = pd.read_csv(self.input()['dataset']['user_item'].path)
+        user_item = pd.read_csv(self.input()['train_test']['train'].path)
         volume = user_item.groupby('user')['rating'].sum() \
             .rename('volume')
 
         # inner join, only keep users for whom we calculated a recommendation diversity value
-        merged = reco_diversities.merge(diversities, on='user')
+        merged: pd.DataFrame = reco_diversities.merge(diversities, on='user')
         merged = merged.merge(volume, on='user')
+
+        up_bound = min(merged['diversity'].max(), merged['reco_diversity'].max())
+        low_bound = max(merged['diversity'].min(), merged['reco_diversity'].min())
         
+        _, ax = pl.subplots()
+        ax.plot([low_bound, up_bound], [low_bound, up_bound], '--', c='purple')
+
         merged.plot.scatter(
+            ax= ax,
             x='diversity', 
             y='reco_diversity', 
             marker='+', 
             c='volume', 
             colormap='viridis',
             norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
-            # xlim=(0, 100)
+            # xlim=(0, 100)    
         )
         pl.xlabel('"organic" diversity')
         pl.ylabel('recommendation diversity')
