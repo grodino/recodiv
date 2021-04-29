@@ -104,15 +104,6 @@ def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
             user_id = point['id']
             n_factors = int(point['customdata'][0])
 
-            user_info = AnalyseUser(
-                user_id=user_id,
-                dataset=msd_dataset,
-                model_n_iterations=n_iterations,
-                model_n_factors=n_factors,
-                model_regularization=regularization,
-                n_recommendations=n_recommendations
-            ).run()
-
             user_info, listened_tag_distribution, recommended_tag_distribution = AnalyseUser(
                 user_id=user_id,
                 dataset=msd_dataset,
@@ -255,15 +246,6 @@ def div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=Fals
             point = click_data['points'][0]
             user_id = point['id']
             n_factors = int(point['customdata'][0])
-
-            user_info = AnalyseUser(
-                user_id=user_id,
-                dataset=msd_dataset,
-                model_n_iterations=n_iterations,
-                model_n_factors=n_factors,
-                model_regularization=regularization,
-                n_recommendations=n_recommendations
-            ).run()
 
             user_info, listened_tag_distribution, recommended_tag_distribution = AnalyseUser(
                 user_id=user_id,
