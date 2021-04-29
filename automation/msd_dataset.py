@@ -2081,9 +2081,19 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
     
     def run(self):
         self.output().makedirs()
-        deltas = pd.read_csv(self.input().path)
+        deltas: pd.DataFrame = pd.read_csv(self.input().path)
+
+        total = deltas.count()['user']
+        portion_increased = deltas[deltas['diversity'] > 0].count()['user'] / total
 
         fig, ax = plot_histogram(deltas['diversity'].to_numpy(), min_quantile=0, max_quantile=1, log=True)
+        ax.text(
+            0, 1,
+            f'{100 * portion_increased:0.2f}% increased',
+            horizontalalignment='left',
+            verticalalignment='top',
+            transform = ax.transAxes,
+        )
         ax.set_xlabel('Diversity index')
         ax.set_ylabel('User count')
         ax.set_title('Histogram of diversity increase due to recommendations')
@@ -2119,6 +2129,14 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
 
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
+    )
+
+    bounds = luigi.parameter.ListParameter(
+        default=None, 
+        description=(
+            "The bounding box of the graph supplied as (x_min, x_max, y_min,"
+            "y_max). If a value is None, leaves matplotlib default"
+        )
     )
 
     def requires(self):
@@ -2176,7 +2194,8 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
             c='volume', 
             colormap='viridis',
             norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
-            # xlim=(0, 100)
+            xlim=self.bounds[:2],
+            ylim=self.bounds[2:],
         )
         pl.xlabel('"organic" diversity')
         pl.ylabel('diversity increase')

@@ -209,13 +209,87 @@ def report_figures(context):
 
     # Diversity increase histogram at equilibrium
     tasks += [
+        # Herfindal
         PlotDiversitiesIncreaseHistogram(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
-        )
+            n_recommendations=N_RECOMMENDATIONS,
+            alpha=2
+        ),
+        # Richness
+        PlotDiversitiesIncreaseHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+            alpha=0
+        ),
+        # Berger-Parker
+        PlotDiversitiesIncreaseHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+            alpha=float('inf')
+        ),
+         # Herfindal
+        PlotDiversitiesIncreaseHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+            alpha=2
+        ),
+        # Richness
+        PlotDiversitiesIncreaseHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+            alpha=0
+        ),
+        # Berger-Parker
+        PlotDiversitiesIncreaseHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+            alpha=float('inf')
+        ),
+         # Herfindal
+        PlotDiversitiesIncreaseHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500,
+            alpha=2
+        ),
+        # Richness
+        PlotDiversitiesIncreaseHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500,
+            alpha=0
+        ),
+        # Berger-Parker
+        PlotDiversitiesIncreaseHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500,
+            alpha=float('inf')
+        ),
     ]
     
     # Recommendation diversity increase vs organic diversity at equilibrium and variations
@@ -227,7 +301,8 @@ def report_figures(context):
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
+            n_recommendations=N_RECOMMENDATIONS,
+            bounds=[0, 75, -40, 40]
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -235,7 +310,8 @@ def report_figures(context):
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
+            n_recommendations=500,
+            bounds=[0, 70, -10, 40]
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -243,7 +319,8 @@ def report_figures(context):
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
+            n_recommendations=10,
+            bounds=[0, 75, -40, 30]
         ),
         # Richness
         PlotUserDiversityIncreaseVsUserDiversity(
