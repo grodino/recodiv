@@ -2717,9 +2717,10 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
         mean_diversities = []
         
         for n_recommendations in self.n_recommendations_values:
-            recommendations = recommendations[recommendations['rank'] <= n_recommendations]
-
-            graph = generate_recommendations_graph(recommendations, item_tag)
+            graph = generate_recommendations_graph(
+                recommendations[recommendations['rank'] <= n_recommendations], 
+                item_tag
+            )
 
             graph.normalise_all()
             diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
@@ -2727,8 +2728,6 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
             mean_diversities.append(
                 sum(diversities.values()) / len(diversities)
             )
-
-            del diversities, graph
 
         pd.DataFrame({
             'n_recommendations': self.n_recommendations_values,
