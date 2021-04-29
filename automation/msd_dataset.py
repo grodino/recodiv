@@ -677,6 +677,124 @@ class PlotTrainTestUsersDiversitiesHistogram(luigi.Task):
         del fig, ax, train_diversities, test_diversities
 
 
+class ComputeTrainTestUserTagsDistribution(luigi.Task):
+    """Compute the tag distibution of items listened by given user. Sorts by
+    decreasing normalized weight"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    user = luigi.parameter.Parameter(
+        description="The hash of the studied user"
+    )
+
+    def requires(self):
+        return BuildTrainTestGraphs(
+            dataset=self.dataset,
+            user_fraction=self.user_fraction
+        )
+
+    def output(self):
+        folder = self.dataset.data_folder.joinpath('user-info')
+
+        return {
+            'train': luigi.LocalTarget(
+                folder.joinpath(f'train-user{self.user}-tags-distribution.csv')
+            ),
+            'test': luigi.LocalTarget(
+                folder.joinpath(f'test-user{self.user}-tags-distribution.csv')
+            ),
+        }
+
+    def run(self):
+        self.output()['train'].makedirs()
+
+        train_graph = IndividualHerfindahlDiversities.recall(self.input()['train'].path)
+        test_graph = IndividualHerfindahlDiversities.recall(self.input()['test'].path)
+
+        # Compute the bipartite projection of the user graph on the tags layer
+        test_graph.normalise_all()
+        test_distribution = test_graph.spread_node(
+            self.user, (0, 1, 2)
+        )
+        test_distribution = pd.Series(test_distribution, name='weight') \
+            .sort_values(ascending=False)
+
+        # Compute the bipartite projection of the user graph on the tags layer
+        train_graph.normalise_all()
+        train_distribution = train_graph.spread_node(
+            self.user, (0, 1, 2)
+        )
+        train_distribution = pd.Series(train_distribution, name='weight') \
+            .sort_values(ascending=False)
+
+        test_distribution.to_csv(self.output()['test'].path)
+        train_distribution.to_csv(self.output()['train'].path)
+
+
+class PlotTrainTestUserTagsDistribution(luigi.Task):
+    """Compute the tag distibution of items listened by given user. Sorts by
+    decreasing normalized weight"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    user = luigi.parameter.Parameter(
+        description="The hash of the studied user"
+    )
+
+    n_tags = luigi.parameter.IntParameter(
+        default=30, description="The number of most represented tags showed in the histogram"
+    )
+
+    def requires(self):
+        return ComputeTrainTestUserTagsDistribution(
+            dataset=self.dataset,
+            user_fraction=self.user_fraction,
+            user=self.user
+        ) 
+
+    def output(self):
+        folder = self.dataset.data_folder.joinpath('user-info/figures')
+
+        return {
+            'train': luigi.LocalTarget(
+                folder.joinpath(f'train-user{self.user}-{self.n_tags}tags-distribution.png')
+            ),
+            'test': luigi.LocalTarget(
+                folder.joinpath(f'test-user{self.user}-{self.n_tags}tags-distribution.png')
+            ),
+        }
+
+    def run(self):
+        self.output()['train'].makedirs()
+
+        test_distribution: pd.Series = pd.read_csv(self.input()['test'].path, index_col=0)
+        test_distribution[:self.n_tags].plot.bar(
+            rot=50
+        )
+        pl.savefig(self.output()['test'].path, format='png', dpi=300)
+
+        pl.clf()
+
+        train_distribution: pd.Series = pd.read_csv(self.input()['train'].path, index_col=0)
+        train_distribution[:self.n_tags].plot.bar(
+            rot=50
+        )
+        pl.savefig(self.output()['train'].path, format='png', dpi=300)
+        
+
+
 ################################################################################
 # MODEL TRAINING/EVALUATION, RECOMMENDATION GENERATION                         #
 ################################################################################
@@ -2214,6 +2332,226 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         del diversities, increase, merged
 
 
+class ComputeUserRecommendationsTagsDistribution(luigi.Task):
+    """Compute the distributions of tags of the items recommended to a given user"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    user = luigi.parameter.Parameter(
+        description="The hash of the studied user"
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return BuildRecommendationGraph(
+            dataset=self.dataset,
+            model_n_iterations=self.model_n_iterations,
+            model_n_factors=self.model_n_factors,
+            model_regularization=self.model_regularization,
+            model_user_fraction=self.model_user_fraction,
+            n_recommendations=self.n_recommendations
+        )
+
+    def output(self):
+        model = Path(self.input().path).parent
+        folder = model.joinpath('user-info')
+
+        return luigi.LocalTarget(
+            folder.joinpath(f'{self.n_recommendations}reco-user{self.user}-tags-distribution.csv')
+        )
+
+    def run(self):
+        self.output().makedirs()
+
+        graph = IndividualHerfindahlDiversities.recall(self.input().path)
+
+        # Compute the bipartite projection of the user graph on the tags layer
+        graph.normalise_all()
+        distribution = graph.spread_node(
+            self.user, (0, 1, 2)
+        )
+        distribution = pd.Series(distribution, name='weight') \
+            .sort_values(ascending=False)
+
+        distribution.to_csv(self.output().path)
+
+
+class PlotUserRecommendationsTagsDistribution(luigi.Task):
+    """Compute the tag distibution of items listened by given user. Sorts by
+    decreasing normalized weight"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    user = luigi.parameter.Parameter(
+        description="The hash of the studied user"
+    )
+
+    n_tags = luigi.parameter.IntParameter(
+        default=30, description="The number of most represented tags showed in the histogram"
+    )
+
+    def requires(self):
+        return ComputeUserRecommendationsTagsDistribution(
+            dataset=self.dataset,
+            user=self.user,
+            model_n_iterations=self.model_n_iterations,
+            model_n_factors=self.model_n_factors,
+            model_regularization=self.model_regularization,
+            model_user_fraction=self.model_user_fraction,
+            n_recommendations=self.n_recommendations
+        ) 
+
+    def output(self):
+        folder = Path(self.input().path).parent.joinpath('figures')
+
+        return luigi.LocalTarget(
+            folder.joinpath(f'{self.n_recommendations}reco-user{self.user}-tags-distribution.png')
+        )
+        
+    def run(self):
+        self.output().makedirs()
+
+        distribution: pd.Series = pd.read_csv(self.input().path, index_col=0)
+        distribution[:self.n_tags].plot.bar(
+            rot=50
+        )
+        pl.savefig(self.output().path, format='png', dpi=300)
+
+
+class PlotUserListeningRecommendationsTagsDistributions(luigi.Task):
+    """Plot the most listened and recommended tags for a user"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    user = luigi.parameter.Parameter(
+        description="The hash of the studied user"
+    )
+
+    n_tags = luigi.parameter.IntParameter(
+        default=30, description="The number of most represented tags showed in the histogram"
+    )
+
+    def requires(self):
+        return {
+            'recommended_tags': ComputeUserRecommendationsTagsDistribution(
+                dataset=self.dataset,
+                user=self.user,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
+            'listened_tags': ComputeTrainTestUserTagsDistribution(
+                dataset=self.dataset,
+                user=self.user,
+                user_fraction=self.model_user_fraction,
+            ),
+        }
+
+    def output(self):
+        folder = Path(self.input()['recommended_tags'].path).parent.joinpath('figures')
+
+        return luigi.LocalTarget(
+            folder.joinpath(f'{self.n_recommendations}reco-listened-user{self.user}-tags-distribution.png')
+        )
+        
+    def run(self):
+        self.output().makedirs()
+
+        reco_distribution: pd.DataFrame = pd.read_csv(
+            self.input()['recommended_tags'].path, index_col=0
+        ).reset_index().rename(columns={
+            'index': 'tag', 'weight': 'recommended'
+        })
+        listened_distribution: pd.DataFrame = pd.read_csv(
+            self.input()['listened_tags']['train'].path, index_col=0
+        ).reset_index().rename(columns={
+            'index': 'tag', 'weight': 'listened'
+        })
+
+        heaviest_tags = pd.merge(
+            reco_distribution[:self.n_tags], 
+            listened_distribution[:self.n_tags],
+            on='tag',
+            how='outer'
+        )
+
+        ax = heaviest_tags.plot.bar(x='tag')
+        pl.setp(ax.get_xticklabels(), rotation=-40, rotation_mode="anchor", ha="left")
+        pl.title(f'{self.n_recommendations} reco, {self.model_n_factors} factors, {self.model_regularization} regularization')
+
+        pl.savefig(self.output().path, format='png', dpi=300)
+
+
 ################################################################################
 # HYPERPARAMETERS ANALYSIS                                                     #
 ################################################################################
@@ -3066,7 +3404,7 @@ class AnalyseUser(luigi.Task):
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
-            )
+            ),
         }
 
     def output(self):
