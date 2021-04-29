@@ -860,6 +860,10 @@ def interactive(context: click.Context, animated: str, alpha: float):
     """Lauch the interactive graphs server"""
     context.ensure_object(dict)
 
+     # Avoid issues where 0.0 and 0 lead to different file titles
+    alpha = float(alpha)
+    alpha = int(alpha) if alpha.is_integer() else alpha
+
     context.obj['animated'] = animated
     context.obj['alpha'] = alpha
 

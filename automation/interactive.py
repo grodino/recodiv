@@ -50,7 +50,7 @@ def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
         color_continuous_scale=px.colors.sequential.Viridis,
         width=float('inf'),
         height=900,
-        title='Effect of user diversity on their recommendation diversity',
+        title='Diversity of items recommended to users',
         labels={
             'diversity': 'User individual diversity',
             'reco_diversity': 'Recommendation diversity',
@@ -145,7 +145,7 @@ def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
             listened_tags_fig = px.bar(
                 listened_tag_distribution,
                 title='Listened tags weight distribution',
-                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+                labels={'value': 'Normalized weight', 'tag': 'Tag name'}
             )
             listened_tags_fig.update_xaxes(range=[0, 30])
             listened_tags_fig.update_layout(xaxis_tickangle=45)
@@ -153,7 +153,7 @@ def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
             recommended_tags_fig = px.bar(
                 recommended_tag_distribution,
                 title='Recommended tags weight distribution',
-                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+                labels={'value': 'Normalized weight', 'tag': 'Tag name'}
             )
             recommended_tags_fig.update_xaxes(range=[0, 30])
             recommended_tags_fig.update_layout(xaxis_tickangle=45)
@@ -202,7 +202,7 @@ def div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=Fals
         color_continuous_scale=px.colors.sequential.Viridis,
         width=float('inf'),
         height=900,
-        title='Effect of user diversity on their recommendation diversity',
+        title='Effect of recommendations on user diversity',
         labels={
             'diversity': 'User individual diversity',
             'reco_diversity': 'Diversity increase',
@@ -297,7 +297,7 @@ def div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=Fals
             listened_tags_fig = px.bar(
                 listened_tag_distribution,
                 title='Listened tags weight distribution',
-                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+                labels={'value': 'Normalized weight', 'tag': 'Tag name'}
             )
             listened_tags_fig.update_xaxes(range=[0, 30])
             listened_tags_fig.update_layout(xaxis_tickangle=45)
@@ -305,7 +305,7 @@ def div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=Fals
             recommended_tags_fig = px.bar(
                 recommended_tag_distribution,
                 title='Recommended tags weight distribution',
-                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+                labels={'value': 'Normalized weight', 'tag': 'Tag name'}
             )
             recommended_tags_fig.update_xaxes(range=[0, 30])
             recommended_tags_fig.update_layout(xaxis_tickangle=45)
@@ -356,7 +356,7 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
         color_continuous_scale=px.colors.sequential.Viridis,
         width=float('inf'),
         height=900,
-        title='Effect of user diversity on their recommendation diversity',
+        title='Diversity of items recommended to users',
         labels={
             'diversity': 'User individual diversity',
             'reco_diversity': 'Recommendation diversity',
@@ -442,7 +442,7 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
             listened_tags_fig = px.bar(
                 listened_tag_distribution,
                 title='Listened tags weight distribution',
-                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+                labels={'value': 'Normalized weight', 'tag': 'Tag name'}
             )
             listened_tags_fig.update_xaxes(range=[0, 30])
             listened_tags_fig.update_layout(xaxis_tickangle=45)
@@ -450,7 +450,7 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
             recommended_tags_fig = px.bar(
                 recommended_tag_distribution,
                 title='Recommended tags weight distribution',
-                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+                labels={'value': 'Normalized weight', 'tag': 'Tag name'}
             )
             recommended_tags_fig.update_xaxes(range=[0, 30])
             recommended_tags_fig.update_layout(xaxis_tickangle=45)
@@ -505,7 +505,7 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False, 
         title='Effect of recommendations on user diversity',
         labels={
             'diversity': 'User individual diversity',
-            'diversity_increase': 'User individual diversity after listening to recommendations',
+            'diversity_increase': 'Diversity increase',
             'volume': 'log10(volume)',
         }
     )
@@ -595,7 +595,7 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False, 
             listened_tags_fig = px.bar(
                 listened_tag_distribution,
                 title='Listened tags weight distribution',
-                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+                labels={'value': 'Normalized weight', 'tag': 'Tag name'}
             )
             listened_tags_fig.update_xaxes(range=[0, 30])
             listened_tags_fig.update_layout(xaxis_tickangle=45)
@@ -603,7 +603,7 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False, 
             recommended_tags_fig = px.bar(
                 recommended_tag_distribution,
                 title='Recommended tags weight distribution',
-                labels={'value': 'Cumulated weight', 'tag': 'Tag name'}
+                labels={'value': 'Normalized weight', 'tag': 'Tag name'}
             )
             recommended_tags_fig.update_xaxes(range=[0, 30])
             recommended_tags_fig.update_layout(xaxis_tickangle=45)

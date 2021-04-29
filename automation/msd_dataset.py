@@ -3240,7 +3240,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
         diversities = pd.read_csv(self.input()['user_diversity']['train'].path)
 
         # compute user volume
-        user_item = pd.read_csv(self.input()['train_test']['test'].path)
+        user_item = pd.read_csv(self.input()['train_test']['train'].path)
         volume = np.log10(user_item.groupby('user')['rating'].sum()) \
             .rename('volume')
         
@@ -3329,10 +3329,10 @@ class ComputeDiversityIncreaseVsUserDiversityVsLatentFactors(luigi.Task):
 
     def run(self):
         self.output().makedirs()
-        diversities = pd.read_csv(self.input()['user_diversity']['test'].path)
+        diversities = pd.read_csv(self.input()['user_diversity']['train'].path)
 
         # compute user volume
-        user_item = pd.read_csv(self.input()['train_test']['test'].path)
+        user_item = pd.read_csv(self.input()['train_test']['train'].path)
         volume = np.log10(user_item.groupby('user')['rating'].sum()) \
             .rename('volume')
 
@@ -3423,10 +3423,10 @@ class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
 
     def run(self):
         self.output().makedirs()
-        diversities = pd.read_csv(self.input()['user_diversity']['test'].path)
+        diversities = pd.read_csv(self.input()['user_diversity']['train'].path)
 
         # compute user volume
-        user_item = pd.read_csv(self.input()['train_test']['test'].path)
+        user_item = pd.read_csv(self.input()['train_test']['train'].path)
         volume = np.log10(user_item.groupby('user')['rating'].sum()) \
             .rename('volume')
         
@@ -3515,10 +3515,10 @@ class ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(luigi.Task):
 
     def run(self):
         self.output().makedirs()
-        diversities = pd.read_csv(self.input()['user_diversity']['test'].path)
+        diversities = pd.read_csv(self.input()['user_diversity']['train'].path)
 
         # compute user volume
-        user_item = pd.read_csv(self.input()['train_test']['test'].path)
+        user_item = pd.read_csv(self.input()['train_test']['train'].path)
         volume = np.log10(user_item.groupby('user')['rating'].sum()) \
             .rename('volume')
         
