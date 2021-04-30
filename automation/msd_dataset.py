@@ -1767,8 +1767,8 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    alpha_values = luigi.parameter.ListParameter(
-        description="The true diversity orders to plot"
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -1790,43 +1790,34 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
     )
 
     def requires(self):
-        req = {}
-
-        for alpha in self.alpha_values:
-            req[alpha] = ComputeRecommendationDiversities(
-                dataset=self.dataset,
-                alpha=alpha,
-                model_n_iterations=self.model_n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations
-            )
-
-        return req
+        return ComputeRecommendationDiversities(
+            dataset=self.dataset,
+            alpha=self.alpha,
+            model_n_iterations=self.model_n_iterations,
+            model_n_factors=self.model_n_factors,
+            model_regularization=self.model_regularization,
+            model_user_fraction=self.model_user_fraction,
+            n_recommendations=self.n_recommendations
+        )
     
     def output(self):
-        figures = Path(self.input()[self.alpha_values[0]].path).parent.joinpath('figures')
+        figures = Path(self.input().path).parent.joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
-            f'{self.n_recommendations}-recommendation_user_diversity{self.alpha_values}_histogram.png'
+            f'{self.n_recommendations}-recommendation_user_diversity{self.alpha}_histogram.png'
         ))
   
     def run(self):
         self.output().makedirs()
 
-        for alpha in self.alpha_values:
-            diversities = pd.read_csv(self.input()[alpha].path)
-            diversities.plot.bar('user', 'diversity', alpha=.5)
-
-        # fig, ax = plot_histogram(diversities['diversity'].to_numpy(), min_quantile=0, max_quantile=1)
+        diversities = pd.read_csv(self.input().path)
+        fig, ax = plot_histogram(diversities['diversity'].to_numpy(), min_quantile=0, max_quantile=1)
         
-        # ax.set_xlabel('Diversity index')
-        # ax.set_ylabel('User count')
-        # ax.set_title('Histogram of recommendations diversity index')
-        # fig.savefig(self.output().path, format='png', dpi=300)
+        ax.set_xlabel('Diversity index')
+        ax.set_ylabel('User count')
+        ax.set_title('Histogram of recommendations diversity index')
         pl.savefig(self.output().path, format='png', dpi=300)
         
-        # del fig, ax, diversities
+        del fig, ax, diversities
 
 
 class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
@@ -2545,7 +2536,7 @@ class PlotUserListeningRecommendationsTagsDistributions(luigi.Task):
             how='outer'
         )
 
-        ax = heaviest_tags.plot.bar(x='tag')
+        ax = heaviest_tags.plot.bar(x='tag', logy=True)
         pl.setp(ax.get_xticklabels(), rotation=-40, rotation_mode="anchor", ha="left")
         pl.title(f'{self.n_recommendations} reco, {self.model_n_factors} factors, {self.model_regularization} regularization')
 
@@ -2882,6 +2873,7 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
             data.plot(xlabel="number of factors", ylabel="diversity", logx=True)
             
         pl.savefig(self.output().path, format='png', dpi=300)
+
 
 # Deprecated
 class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
@@ -3534,8 +3526,7 @@ class AnalyseUser(luigi.Task):
     
     user_id = luigi.parameter.Parameter(
         description='The id string of the user'
-    )
-    
+    )    
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'

@@ -158,13 +158,86 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
 
     # Recommendation diversity histogram at equilibrium (optimal parameters)
     tasks += [
+        # Herfindal
         PlotRecommendationsUsersDiversitiesHistogram(
             dataset=msd_dataset,
-            alpha_values=[0, 2, float('inf')],
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
+            n_recommendations=N_RECOMMENDATIONS,
+            alpha=2
+        ),
+        # Richness
+        PlotRecommendationsUsersDiversitiesHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+            alpha=0
+        ),
+        # Berger-Parker
+        PlotRecommendationsUsersDiversitiesHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+            alpha=float('inf')
+        ),
+         # Herfindal
+        PlotRecommendationsUsersDiversitiesHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+            alpha=2
+        ),
+        # Richness
+        PlotRecommendationsUsersDiversitiesHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+            alpha=0
+        ),
+        # Berger-Parker
+        PlotRecommendationsUsersDiversitiesHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+            alpha=float('inf')
+        ),
+         # Herfindal
+        PlotRecommendationsUsersDiversitiesHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500,
+            alpha=2
+        ),
+        # Richness
+        PlotRecommendationsUsersDiversitiesHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500,
+            alpha=0
+        ),
+        # Berger-Parker
+        PlotRecommendationsUsersDiversitiesHistogram(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500,
+            alpha=float('inf')
         ),
     ]
 
@@ -632,7 +705,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations_values=[10, 50, 200]
+            n_recommendations_values=[10, 50, 500]
         ),
         # Richness
         PlotRecommendationDiversityVsLatentFactors(
@@ -641,7 +714,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations_values=[10, 50, 200]
+            n_recommendations_values=[10, 50, 500]
         ),
         # Berger-Parker
         PlotRecommendationDiversityVsLatentFactors(
@@ -650,7 +723,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations_values=[10, 50, 200]
+            n_recommendations_values=[10, 50, 500]
         ),
     ]
 
@@ -753,6 +826,37 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
 
     # Compare the listened tags distribution to the recommended tags distribution for a user
     tasks += [
+        # High organic div, low reco div
+        PlotUserListeningRecommendationsTagsDistributions(
+            dataset=msd_dataset,
+            user='dfe4fbf7cfa359b8489f1bbe488ef3a1affe4e94',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+        ),
+        # Average organic div, same reco div
+        PlotUserListeningRecommendationsTagsDistributions(
+            dataset=msd_dataset,
+            user='fc262e03c598b4e89b479f33162e6408d6ba90bf',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+        ),
+        # Low organic div, high recommended div
+        PlotUserListeningRecommendationsTagsDistributions(
+            dataset=msd_dataset,
+            user='2821f2302af120e18a07a3efd934c65cbccdd6f0',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+        ),
+        # Average organic div, high increase
         PlotUserListeningRecommendationsTagsDistributions(
             dataset=msd_dataset,
             user='8a2986ddf6f0380a58638e384cc47ee0759a6369',
@@ -762,7 +866,18 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS,
         ),
+        # Average organic div, low increase
+        PlotUserListeningRecommendationsTagsDistributions(
+            dataset=msd_dataset,
+            user='8f37b100d7f7aa6b3b1c6a4d0e2955e625688d6b',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+        ),
     ]
+    
 
     # Compare the listened tags distribution to the recommended tags distribution for each user
     tasks += [
