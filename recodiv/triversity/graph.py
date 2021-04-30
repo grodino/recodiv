@@ -445,6 +445,26 @@ class NPartiteGraph:
 
         return self._div_return()
 
+    def spread(self, path, progress=True):
+        """Spread the distributions and return the final distribution
+
+        If already spread just compute the diversity. We use find_last_step just
+        one time and not for every nodes.
+
+        :param path: the ids of the sets ("layers") to be traversed (in given order) by the spread.
+        :param progress: show the progress via tqdm
+        """
+
+        distributions = {}
+
+        for node_id, neighbors in tqdm(self.graphs[path[0]][path[1]].items(), disable=not(progress), desc='Spreading distributions'):         
+            distribution = self._spread_path(neighbors, path[1:])
+            distributions[self.revids[path[0]][node_id]] = {
+                self.revids[path[-1]][node_id]: value for node_id, value in distribution.items()
+            }
+
+        return distributions
+
     def spread_node(self, node_hash, path):
         """Compute the distributions of reached nodes in the layer path[-1] for
         a single node in the layer path[0] through the given layers layer[1: -1]
