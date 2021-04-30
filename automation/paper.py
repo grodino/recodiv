@@ -4,6 +4,216 @@ import luigi
 
 from automation.config import *
 from automation.msd_dataset import *
+from recodiv.utils import axes_to_grid
+
+
+def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
+    """Tasks used to develop the models and test things out"""
+
+    msd_dataset = MsdDataset(
+        name,
+        n_users=n_users,
+        min_item_volume=10
+    )
+
+    split = dict(
+        name='leave-one-out',
+        n_fold=5,
+        row_fraction=.1
+    )
+
+    def data_info():
+        return [
+            DatasetInfo(dataset=msd_dataset),
+            GenerateTrainTest(dataset=msd_dataset, split=split),
+            TrainTestInfo(dataset=msd_dataset, split=split),
+            ComputeTrainTestUserDiversity(
+                dataset=msd_dataset, split=split, alpha=2
+            ),
+        ]
+
+    def test_single_model():
+        model = dict(
+            name='implicit-MF',
+            n_iterations=10,
+            n_factors=128,
+            regularization=0.01,
+            confidence_factor=40,
+        )
+
+        return [
+            GenerateTrainTest(dataset=msd_dataset, split=split),
+            TrainTestInfo(dataset=msd_dataset, split=split),
+            TrainModel(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                fold_id=2,
+            ),
+            PlotTrainLoss(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                fold_id=2,
+            ),
+            GenerateRecommendations(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                fold_id=2,
+                n_recommendations=10,
+            ),
+            GeneratePredictions(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                fold_id=2,
+                train_predictions=True,
+            ),
+            EvaluateUserRecommendations(
+                dataset=msd_dataset,
+                model=model,
+                split=split,
+                n_recommendations=10
+            ),
+            EvaluateModel(
+                dataset=msd_dataset,
+                model=model,
+                split=split,
+                n_recommendations=10
+            ),
+            BuildRecommendationsWithListeningsGraph(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                n_recommendations=10
+            ),
+            ComputeRecommendationWithListeningsUsersDiversities(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                n_recommendations=10,
+                alpha=2
+            ),
+            ComputeRecommendationWithListeningsUsersDiversityIncrease(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                n_recommendations=10,
+                alpha=2
+            ),
+            PlotUserDiversityIncreaseVsUserDiversity(
+                dataset=msd_dataset,
+                split=split,
+                fold_id=0,
+                model=model,
+                n_recommendations_values=[10, 50, 500],
+                alpha_values=[0, 2, float('inf')],
+            )
+        ]
+
+    def test_hyperparameter_grid():
+        latent_factors = [128, 256, 512]
+        regularizations = [0.0001, 0.005, 0.1]
+        grid = axes_to_grid(latent_factors, regularizations)
+
+        models = []
+        for n_factors, regularization in grid:
+            models.append(dict(
+                name='implicit-MF',
+                n_iterations=10,
+                n_factors=int(n_factors),
+                regularization=float(regularization),
+                confidence_factor=40,
+            ))
+
+        metrics = {
+            'ndcg': 'max',
+            'recip_rank': 'max',
+            'recall': 'max',
+            'train_loss': 'min',
+            'test_loss': 'min'
+        }
+        tasks = []
+
+        for metric, tuning_best in metrics.items():
+            tasks.append(PlotModelTuning(
+                dataset=msd_dataset,
+                models=models,
+                split=split,
+                n_recommendations=10,
+                tuning_metric=metric,
+                tuning_best=tuning_best,
+            ))
+            tasks.append(PlotModelTuning(
+                dataset=msd_dataset,
+                models=models,
+                split=split,
+                n_recommendations=50,
+                tuning_metric=metric,
+                tuning_best=tuning_best,
+            ))
+            tasks.append(PlotModelTuning(
+                dataset=msd_dataset,
+                models=models,
+                split=split,
+                n_recommendations=100,
+                tuning_metric=metric,
+                tuning_best=tuning_best,
+            ))
+
+        return tasks
+
+    def diversity_vs_parameters():
+        tasks = []
+        latent_factors = [128, 256, 512]
+        regularizations = [0.0001, 0.005, 0.1]
+
+        # Diversity vs n factors
+        models = []
+        for n_factors in latent_factors:
+            models.append(dict(
+                name='implicit-MF',
+                n_iterations=10,
+                n_factors=int(n_factors),
+                regularization=regularizations[1],
+                confidence_factor=40,
+            ))
+
+        # tasks.append(PlotRecommendationDiversityVsHyperparameter(
+        #     dataset=msd_dataset,
+        #     hyperparameter='n_factors',
+        #     models=models,
+        #     split=split,
+        #     fold_id=2,
+        #     alpha=2,
+        #     n_recommendations_values=[10, 50, 100]
+        # ))
+
+        # Diversity vs regularization
+        models = []
+        for regularization in regularizations:
+            models.append(dict(
+                name='implicit-MF',
+                n_iterations=10,
+                n_factors=int(latent_factors[0]),
+                regularization=regularization,
+                confidence_factor=40,
+            ))
+
+        # tasks.append(PlotRecommendationDiversityVsHyperparameter(
+        #     dataset=msd_dataset,
+        #     hyperparameter='regularization',
+        #     models=models,
+        #     split=split,
+        #     fold_id=2,
+        #     alpha=2,
+        #     n_recommendations_values=[10, ]
+        # ))
+
+        return tasks
+
+    return data_info() + test_single_model() + test_hyperparameter_grid() + diversity_vs_parameters()
 
 
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
@@ -28,7 +238,8 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         TrainTestInfo(dataset=msd_dataset),
         PlotTrainTestUsersDiversitiesHistogram(dataset=msd_dataset, alpha=0),
         PlotTrainTestUsersDiversitiesHistogram(dataset=msd_dataset, alpha=2),
-        PlotTrainTestUsersDiversitiesHistogram(dataset=msd_dataset, alpha=float('inf')),
+        PlotTrainTestUsersDiversitiesHistogram(
+            dataset=msd_dataset, alpha=float('inf')),
     ]
 
     # Model convergence plot
@@ -197,7 +408,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             n_recommendations=N_RECOMMENDATIONS,
             alpha=float('inf')
         ),
-         # Herfindal
+        # Herfindal
         PlotDiversitiesIncreaseHistogram(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
@@ -224,7 +435,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             n_recommendations=10,
             alpha=float('inf')
         ),
-         # Herfindal
+        # Herfindal
         PlotDiversitiesIncreaseHistogram(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
@@ -252,7 +463,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             alpha=float('inf')
         ),
     ]
-    
+
     # Recommendation diversity increase vs organic diversity at equilibrium and variations
     tasks += [
         # Herfindal
@@ -588,7 +799,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         PlotDiversityVsRecommendationVolume(
             dataset=msd_dataset,
             alpha=float('inf'),
-            model_n_iterations=N_ITERATIONS,    
+            model_n_iterations=N_ITERATIONS,
             n_factors_values=[5, 20, 500, 3_000],
             model_regularization=OPT_REGULARIZATION,
             n_recommendations_values=N_RECOMMENDATIONS_VALUES
@@ -676,7 +887,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS
         ),
-         PlotDiversityIncreaseVsLatentFactors(
+        PlotDiversityIncreaseVsLatentFactors(
             dataset=msd_dataset,
             alpha=2,
             model_n_iterations=N_ITERATIONS,
