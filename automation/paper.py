@@ -751,8 +751,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         ),
     ]
 
-    # Analyse the tags distribution of the items recommended to a user compared
-    # to its listened items distribution
+    # Compare the listened tags distribution to the recommended tags distribution for a user
     tasks += [
         PlotUserListeningRecommendationsTagsDistributions(
             dataset=msd_dataset,
@@ -762,6 +761,93 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS,
+        ),
+    ]
+
+    # Compare the listened tags distribution to the recommended tags distribution for each user
+    tasks += [
+        # Herfindal
+        PlotHeaviestTagRankVsPercentageIncreased(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+            alpha=2
+        ),
+        # Richness
+        PlotHeaviestTagRankVsPercentageIncreased(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+            alpha=0
+        ),
+        # Berger-Parker
+        PlotHeaviestTagRankVsPercentageIncreased(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+            alpha=float('inf')
+        ),
+
+        # Herfindal
+        PlotHeaviestTagRankVsPercentageIncreased(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500,
+            alpha=2
+        ),
+        # Richness
+        PlotHeaviestTagRankVsPercentageIncreased(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500,
+            alpha=0
+        ),
+        # Berger-Parker
+        PlotHeaviestTagRankVsPercentageIncreased(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=500,
+            alpha=float('inf')
+        ),
+
+        # Herfindal
+        PlotHeaviestTagRankVsPercentageIncreased(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+            alpha=2
+        ),
+        # Richness
+        PlotHeaviestTagRankVsPercentageIncreased(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+            alpha=0
+        ),
+        # Berger-Parker
+        PlotHeaviestTagRankVsPercentageIncreased(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+            alpha=float('inf')
         ),
     ]
 

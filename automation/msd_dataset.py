@@ -2552,6 +2552,195 @@ class PlotUserListeningRecommendationsTagsDistributions(luigi.Task):
         pl.savefig(self.output().path, format='png', dpi=300)
 
 
+class ComputeHeaviestTagRank(luigi.Task):
+    """For each user, compute the most listened tag, the find the rank of this tag in the recommendations"""
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return {
+            'recommendation_graph': BuildRecommendationGraph(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
+            'train_test_graph': BuildTrainTestGraphs(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction,
+            )
+        }
+
+    def output(self):
+        model = Path(self.input()['recommendation_graph'].path).parent
+
+        return luigi.LocalTarget(
+            model.joinpath(f'{self.n_recommendations}reco-user-heaviest-tag-reco-rank.csv')
+        )
+
+    def run(self):
+        self.output().makedirs()
+
+        listened_graph = IndividualHerfindahlDiversities.recall(self.input()['train_test_graph']['train'].path)
+        recommended_graph = IndividualHerfindahlDiversities.recall(self.input()['recommendation_graph'].path)
+
+        # Compute the bipartite projection of the user graph on the tags layer
+        listened_graph.normalise_all()
+        recommended_graph.normalise_all()
+
+        listened_distributions = listened_graph.spread((0, 1, 2))
+        recommended_distributions = recommended_graph.spread((0, 1, 2))
+
+        # Compute the most recommended tag for each user
+        heaviest_reco_tag = {}
+
+        for user, distrib in recommended_distributions.items():
+            heaviest_reco_tag[user] = max(distrib.items(), key=lambda item: item[1])[0]
+
+        # Copute the rank of this tag in the user's listenings
+        heaviest_tag_rank = {}
+
+        for user in recommended_distributions.keys():
+            tag_distribution = sorted(
+                listened_distributions[user].items(), 
+                key=lambda item: item[1], 
+                reverse=True
+            )
+            
+            # look for the heaviest recommended tag
+            for i, (tag, _) in enumerate(tag_distribution):
+                if tag == heaviest_reco_tag[user]:
+                    heaviest_tag_rank[user] = i
+                    break
+
+        pd.DataFrame({
+            'user': heaviest_tag_rank.keys(),
+            'rank': heaviest_tag_rank.values(),
+            'tag': [heaviest_reco_tag[user] for user in heaviest_tag_rank.keys()]
+        }).to_csv(self.output().path, index=False)
+
+
+class PlotHeaviestTagRankVsPercentageIncreased(luigi.Task):
+    """Plot and compute the mean heaviest tag rank in two sets : the set of users who's
+    diversity is increased by the recommendations and the set of users who's
+    diversity is decreased by the recommendations."""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
+
+    def requires(self):
+        return {
+            'tag_rank': ComputeHeaviestTagRank(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
+            'increase': ComputeRecommendationWithListeningsUsersDiversityIncrease(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations,
+                alpha=self.alpha
+            ),
+        }
+
+    def output(self):
+        model = Path(self.input()['tag_rank'].path).parent
+        figures = model.joinpath('figures')
+
+        return luigi.LocalTarget(
+            figures.joinpath(f'{self.n_recommendations}reco-heaviest-tag-reco-rank-vs-increase{self.alpha}.png')
+        )
+
+    def run(self):
+        tag_rank = pd.read_csv(self.input()['tag_rank'].path) 
+        increase: pd.DataFrame = pd.read_csv(self.input()['increase'].path)
+
+        merged = pd.merge(tag_rank, increase, on='user')
+        increased = merged[merged['diversity'] > 0]
+        decreased = merged[merged['diversity'] < 0]
+
+        increased_mean_rank = increased['rank'].mean()
+        decreased_mean_rank = decreased['rank'].mean()
+
+        ax = merged.plot.scatter(
+            x='diversity', 
+            y='rank', 
+            marker='+',
+            logy=True,
+            ylim=(9e-1, 1e3),
+        )
+
+        ax.text(
+            0, 1,
+            f'increased mean rank : {increased_mean_rank}\ndecreased mean rank : {decreased_mean_rank}',
+            horizontalalignment='left',
+            verticalalignment='top',
+            transform = ax.transAxes,
+        )
+
+        pl.xlabel('Diversity increase')
+        pl.ylabel('Best recommended tag rank')
+
+        pl.savefig(self.output().path, format='png', dpi=300)
+        pl.clf()
+
+
 ################################################################################
 # HYPERPARAMETERS ANALYSIS                                                     #
 ################################################################################
