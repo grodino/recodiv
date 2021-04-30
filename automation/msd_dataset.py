@@ -2822,6 +2822,128 @@ class PlotUserTagHistograms(luigi.Task):
         pl.savefig(self.output().path, format='png', dpi=300)
 
 
+class MetricsSummary(luigi.Task):
+    """Create a single file that summarizes metrics computed for each test user, for
+    manual analysis"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+    alpha_values = luigi.parameter.ListParameter(
+        description="The true diversity orders used"
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations_values = luigi.parameter.ListParameter(
+        description='List of number of recommendation to generate for each user at each training iteration if evaluate_iterations==True'
+    )
+
+    def requires(self):
+        req = {'train_test': GenerateTrainTest(
+            dataset=self.dataset,
+            user_fraction=self.model_user_fraction
+        )}
+
+        for alpha in self.alpha_values:
+            req[f'train_test_div{alpha}'] = ComputeTrainTestUserDiversity(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction,
+                alpha=alpha
+            )
+            req[f'dataset_div{alpha}'] = ComputeUsersDiversities(
+                dataset=self.dataset,
+                alpha=alpha
+            )
+
+            for n_recommendations in self.n_recommendations_values:            
+                req[f'reco{n_recommendations}_div{alpha}'] = ComputeRecommendationDiversities(
+                    dataset=self.dataset,
+                    alpha=alpha,
+                    model_n_iterations=self.model_n_iterations,
+                    model_n_factors=self.model_n_factors,
+                    model_regularization=self.model_regularization,
+                    model_user_fraction=self.model_user_fraction,
+                    n_recommendations=n_recommendations
+                )
+                req[f'reco{n_recommendations}_div{alpha}_increase'] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
+                     dataset=self.dataset,
+                    alpha=alpha,
+                    model_n_iterations=self.model_n_iterations,
+                    model_n_factors=self.model_n_factors,
+                    model_regularization=self.model_regularization,
+                    model_user_fraction=self.model_user_fraction,
+                    n_recommendations=n_recommendations
+                )
+        
+        return req
+
+    def output(self):
+        folder = self.dataset.base_folder.joinpath('aggregated')
+
+        return luigi.LocalTarget(
+            folder.joinpath(f'summary-{self.n_recommendations_values}reco-{self.alpha_values}div-{self.model_regularization}reg-{self.model_n_factors}factors.csv')
+        )
+
+    def run(self):
+        self.output().makedirs()
+
+        # Compute the volume for each user in test
+        user_item: pd.DataFrame = pd.read_csv(self.input()['train_test']['test'].path)
+        volume = user_item[['user', 'rating']].groupby('user') \
+            .sum() \
+            .rename(columns={'rating': 'volume'})['volume']
+
+        # Compute the organic (train) diversity of each test user
+        organic_diversities = []
+
+        for alpha in self.alpha_values:
+            organic_diversity: pd.DataFrame = pd.read_csv(self.input()[f'train_test_div{alpha}']['train'].path)
+            organic_diversities.append(
+                organic_diversity.set_index('user')['diversity'].rename(f'train_diversity{alpha}')
+            )
+
+        # Compute the recommendation diversity for each user
+        reco_diversities = []
+
+        for alpha in self.alpha_values:
+            for n_recommendations in self.n_recommendations_values:
+                reco_diversity: pd.DataFrame = pd.read_csv(self.input()[f'reco{n_recommendations}_div{alpha}'].path)
+                reco_diversities.append(
+                    reco_diversity.set_index('user')['diversity'].rename(f'reco{n_recommendations}_div{alpha}')
+                )
+
+        # Compute the diversity increase for each user
+        increases = []
+
+        for alpha in self.alpha_values:
+            for n_recommendations in self.n_recommendations_values:
+                increase: pd.DataFrame = pd.read_csv(self.input()[f'reco{n_recommendations}_div{alpha}_increase'].path)
+                increases.append(
+                    increase.set_index('user')['diversity'].rename(f'reco{n_recommendations}_div{alpha}_increase')
+                )
+
+        columns = [volume] + organic_diversities + reco_diversities + increases
+        summary = pd.DataFrame(index=volume.index)
+        
+        for col in columns:
+            summary[col.name] = col
+
+        summary.reset_index().to_csv(self.output().path, index=False)
+
+
 ################################################################################
 # HYPERPARAMETERS ANALYSIS                                                     #
 ################################################################################

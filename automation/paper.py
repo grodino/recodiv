@@ -1019,4 +1019,16 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         ),
     ]
 
+    # Generate a summary of the metrics computed for a model
+    tasks += [
+        MetricsSummary(
+            dataset=msd_dataset,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations_values=[10, 50, 500],
+            alpha_values=[0, 2, float('inf')]
+        ),
+    ]
+
     return tasks
