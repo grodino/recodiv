@@ -878,8 +878,61 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         ),
     ]
     
-
-    # Compare the listened tags distribution to the recommended tags distribution for each user
+    # Compare the listened, recommended and reco+listened tags distributions
+    tasks += [
+        # High organic div, low reco div
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='dfe4fbf7cfa359b8489f1bbe488ef3a1affe4e94',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+        ),
+        # Average organic div, same reco div
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='fc262e03c598b4e89b479f33162e6408d6ba90bf',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+        ),
+        # Low organic div, high recommended div
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='2821f2302af120e18a07a3efd934c65cbccdd6f0',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+        ),
+        # Average organic div, high increase
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='8a2986ddf6f0380a58638e384cc47ee0759a6369',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+        ),
+        # Average organic div, low increase
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='8f37b100d7f7aa6b3b1c6a4d0e2955e625688d6b',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=N_RECOMMENDATIONS,
+        ),
+    ]
+    
+    # Compare the best tag rank to the diversity increase of users
     tasks += [
         # Herfindal
         PlotHeaviestTagRankVsPercentageIncreased(

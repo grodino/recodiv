@@ -2732,6 +2732,96 @@ class PlotHeaviestTagRankVsPercentageIncreased(luigi.Task):
         pl.clf()
 
 
+class PlotUserTagHistograms(luigi.Task):
+    """Plot the listened, recommended and listened+recommended tags histograms
+    for a user"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    user = luigi.parameter.Parameter(
+        description="The hash of the studied user"
+    )
+
+    n_tags = luigi.parameter.IntParameter(
+        default=30, description="The number of most represented tags showed in the histogram"
+    )
+
+    def requires(self):
+        return {
+            'recommended_tags': ComputeUserRecommendationsTagsDistribution(
+                dataset=self.dataset,
+                user=self.user,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
+            'listened_tags': ComputeTrainTestUserTagsDistribution(
+                dataset=self.dataset,
+                user=self.user,
+                user_fraction=self.model_user_fraction,
+            ),
+        }
+
+    def output(self):
+        folder = Path(self.input()['recommended_tags'].path).parent.joinpath('figures')
+
+        return luigi.LocalTarget(
+            folder.joinpath(f'{self.n_recommendations}reco-user{self.user}-tag-histograms.png')
+        )
+        
+    def run(self):
+        self.output().makedirs()
+
+        reco_distribution: pd.DataFrame = pd.read_csv(
+            self.input()['recommended_tags'].path, index_col=0
+        ).reset_index().rename(columns={
+            'index': 'tag', 'weight': 'recommended'
+        })
+        listened_distribution: pd.DataFrame = pd.read_csv(
+            self.input()['listened_tags']['train'].path, index_col=0
+        ).reset_index().rename(columns={
+            'index': 'tag', 'weight': 'listened'
+        })
+
+        heaviest_tags = pd.merge(
+            reco_distribution[:self.n_tags], 
+            listened_distribution[:self.n_tags],
+            on='tag',
+            how='outer'
+        )
+
+        ax = heaviest_tags.plot.bar(x='tag', logy=True, subplots=True)
+        pl.setp(ax[1].get_xticklabels(), rotation=-40, rotation_mode="anchor", ha="left")
+        pl.title(f'{self.n_recommendations} reco, {self.model_n_factors} factors, {self.model_regularization} regularization')
+
+        pl.savefig(self.output().path, format='png', dpi=300)
+
+
 ################################################################################
 # HYPERPARAMETERS ANALYSIS                                                     #
 ################################################################################
