@@ -18,11 +18,11 @@ from recodiv.utils import dataset_info
 from recodiv.utils import plot_histogram
 from recodiv.utils import generate_graph
 from recodiv.utils import get_msd_song_info
+from recodiv.utils import linear_regression
 from recodiv.utils import generate_recommendations_graph
 from recodiv.utils import build_recommendations_listenings_graph
 from recodiv.model import train_model
 from recodiv.model import split_dataset
-from recodiv.model import tags_distance
 from recodiv.model import rank_to_weight
 from recodiv.model import evaluate_model_loss
 from recodiv.model import generate_predictions
@@ -2296,7 +2296,15 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         merged = merged.merge(volume, on='user')
         merged = merged[merged['increase'] != 0]
         
-        merged.plot.scatter(
+        if self.bounds == None:
+            self.bounds = [None, None, None, None]
+
+        a, b = linear_regression(merged, 'diversity', 'increase')
+        x = merged[(self.bounds[0] < merged['diversity']) & (merged['diversity'] < self.bounds[1])]['diversity'] \
+            .sort_values().to_numpy()
+        y = a * x + b
+        
+        ax: pl.Axes = merged.plot.scatter(
             x='diversity', 
             y='increase', 
             marker='+', 
@@ -2306,19 +2314,27 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
             xlim=self.bounds[:2],
             ylim=self.bounds[2:],
         )
+
+        ax.plot(x, y, '--', c='purple')
+
         pl.xlabel('"organic" diversity')
         pl.ylabel('diversity increase')
 
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
-        tikzplotlib.save(self.output()['latex'].path)
+
+        with open(self.output()['latex'].path, 'w') as file:
+            code: str = tikzplotlib.get_tikz_code(
+                extra_axis_parameters=['clip mode=individual','clip marker paths=true']
+            )
+            
+            code = code.replace('ytick={1,10,100,1000}', 'ytick={0,1,2,3}')
+            code = code.replace('meta=colordata', 'meta expr=lg10(\\thisrow{colordata})')
+            code = code.replace('point meta', '% point meta')
+            code = code.replace('semithick', 'very thick')
+            
+            file.write(code)
 
         pl.clf()
-
-        # increased = merged[merged['increase'] > 0]
-        # item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
-
-        # pl.figure()
-        # pl.hist(increased['volume'])
 
         del diversities, increase, merged
 
@@ -2371,6 +2387,72 @@ class ComputeUserRecommendationsTagsDistribution(luigi.Task):
 
         return luigi.LocalTarget(
             folder.joinpath(f'{self.n_recommendations}reco-user{self.user}-tags-distribution.csv')
+        )
+
+    def run(self):
+        self.output().makedirs()
+
+        graph = IndividualHerfindahlDiversities.recall(self.input().path)
+
+        # Compute the bipartite projection of the user graph on the tags layer
+        graph.normalise_all()
+        distribution = graph.spread_node(
+            self.user, (0, 1, 2)
+        )
+        distribution = pd.Series(distribution, name='weight') \
+            .sort_values(ascending=False)
+
+        distribution.to_csv(self.output().path)
+
+
+class ComputeUserListenedRecommendedTagsDistribution(luigi.Task):
+    """Compute the tag distribution reached by a user thtough their listened and recommended items"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    user = luigi.parameter.Parameter(
+        description="The hash of the studied user"
+    )
+
+    model_n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+    model_confidence_factor = luigi.parameter.FloatParameter(
+        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    )
+    
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    def requires(self):
+        return BuildRecommendationsWithListeningsGraph(
+            dataset=self.dataset,
+            model_n_iterations=self.model_n_iterations,
+            model_n_factors=self.model_n_factors,
+            model_regularization=self.model_regularization,
+            model_user_fraction=self.model_user_fraction,
+            n_recommendations=self.n_recommendations
+        )
+
+    def output(self):
+        model = Path(self.input().path).parent
+        folder = model.joinpath('user-info')
+
+        return luigi.LocalTarget(
+            folder.joinpath(f'listening-{self.n_recommendations}reco-user{self.user}-tags-distribution.csv')
         )
 
     def run(self):
@@ -2530,8 +2612,8 @@ class PlotUserListeningRecommendationsTagsDistributions(luigi.Task):
         })
 
         heaviest_tags = pd.merge(
-            reco_distribution[:self.n_tags], 
             listened_distribution[:self.n_tags],
+            reco_distribution[:self.n_tags], 
             on='tag',
             how='outer'
         )
@@ -2785,6 +2867,15 @@ class PlotUserTagHistograms(luigi.Task):
                 user=self.user,
                 user_fraction=self.model_user_fraction,
             ),
+            'after_reco_tags': ComputeUserListenedRecommendedTagsDistribution(
+                dataset=self.dataset,
+                user=self.user,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
         }
 
     def output(self):
@@ -2807,17 +2898,29 @@ class PlotUserTagHistograms(luigi.Task):
         ).reset_index().rename(columns={
             'index': 'tag', 'weight': 'listened'
         })
+        after_reco_distribution: pd.DataFrame = pd.read_csv(
+            self.input()['after_reco_tags'].path, index_col=0
+        ).reset_index().rename(columns={
+            'index': 'tag', 'weight': 'listened'
+        })
 
         heaviest_tags = pd.merge(
-            reco_distribution[:self.n_tags], 
             listened_distribution[:self.n_tags],
+            reco_distribution[:self.n_tags], 
             on='tag',
             how='outer'
         )
 
-        ax = heaviest_tags.plot.bar(x='tag', logy=True, subplots=True)
-        pl.setp(ax[1].get_xticklabels(), rotation=-40, rotation_mode="anchor", ha="left")
-        pl.title(f'{self.n_recommendations} reco, {self.model_n_factors} factors, {self.model_regularization} regularization')
+        heaviest_tags_after_reco = after_reco_distribution[:self.n_tags]
+
+        fig, axes = pl.subplots(1, 2)
+        
+        ax = heaviest_tags.plot.bar(x='tag', logy=True, ax=axes[0])
+        pl.setp(ax.get_xticklabels(), rotation=-40, rotation_mode="anchor", ha="left")
+
+        ax = heaviest_tags_after_reco.plot.bar(x='tag', ax=axes[1])
+
+        pl.suptitle(f'{self.n_recommendations} reco, {self.model_n_factors} factors, {self.model_regularization} regularization')
 
         pl.savefig(self.output().path, format='png', dpi=300)
 

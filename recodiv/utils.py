@@ -1,10 +1,11 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from matplotlib import pyplot as pl
+from sklearn.linear_model import LinearRegression
 
 from recodiv.model import rank_to_weight
 from recodiv.triversity.graph import IndividualHerfindahlDiversities
@@ -69,6 +70,23 @@ def generate_recommendations_graph(recommendations: pd.DataFrame, item_tag: Opti
     return generate_graph(reco_user_item[['user', 'item', 'rating']], item_tag)
 
 
+def linear_regression(data: pd.DataFrame, x: str, y: str) -> Tuple[float, float]:
+    """Return the coefficients of a 2D linear regression on data
+
+    Find a, b such that y = a x + b
+    
+    :param data: dataframe containing the data to fit
+    :param x: the name of the column to use for the x variable
+    :param y: the name of the column to use for the y variable
+
+    :returns: the coefficients (a, b)
+    """
+
+    reg = LinearRegression().fit(data[x].to_numpy().reshape(-1, 1), data[y].to_numpy())
+    
+    return reg.coef_[0], reg.intercept_
+
+
 def build_recommendations_listenings_graph(
     listenings_graph: IndividualHerfindahlDiversities, 
     user_item: pd.DataFrame, 
@@ -85,6 +103,7 @@ def build_recommendations_listenings_graph(
 
     # No need to give the item_tag info because it is already in the graph
     return generate_graph(reco_user_item, item_tag=None, graph=listenings_graph)
+
 
 def dataset_info(graph):
     """Returns information on the dataset (number of users, links ...)"""

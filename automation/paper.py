@@ -1,6 +1,7 @@
 from typing import List
 
 import luigi
+from luigi import task
 
 from automation.config import *
 from automation.msd_dataset import *
@@ -335,8 +336,8 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-            bounds=[0, 75, -40, 40]
+            n_recommendations=50,
+            bounds=[0, 75, -30, 40]
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -345,7 +346,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=500,
-            bounds=[0, 70, -10, 40]
+            bounds=[0, 75, -30, 40]
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -354,7 +355,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=10,
-            bounds=[0, 75, -40, 30]
+            bounds=[0, 75, -30, 30]
         ),
         # Richness
         PlotUserDiversityIncreaseVsUserDiversity(
@@ -363,7 +364,8 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
+            n_recommendations=50,
+            bounds=[-15, 800, None, None],
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -371,7 +373,8 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
+            n_recommendations=500,
+            bounds=[-15, 800, None, None],
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -379,7 +382,8 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
+            n_recommendations=10,
+            bounds=[-15, 800, None, None],
         ),
         # Berger-Parker
         PlotUserDiversityIncreaseVsUserDiversity(
@@ -388,7 +392,8 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
+            n_recommendations=50,
+            bounds=[0, 25, -12, 12],
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -396,7 +401,8 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
+            n_recommendations=500,
+            bounds=[0, 25, -12, 12],
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -404,82 +410,8 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
-        ),
-        # Almost Berger-Parker 1_000
-        PlotUserDiversityIncreaseVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=1_000,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
-        ),
-        PlotUserDiversityIncreaseVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=1_000,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
-        ),
-        PlotUserDiversityIncreaseVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=1_000,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
-        ),
-        # Almost Berger-Parker 500
-        PlotUserDiversityIncreaseVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=500,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
-        ),
-        PlotUserDiversityIncreaseVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=500,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
-        ),
-        PlotUserDiversityIncreaseVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=500,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
-        ),
-        # Almost Berger-Parker 250
-        PlotUserDiversityIncreaseVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=250,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
-        ),
-        PlotUserDiversityIncreaseVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=250,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
-        ),
-        PlotUserDiversityIncreaseVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=250,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
+            n_recommendations=10,
+            bounds=[0, 25, -12, 12],
         ),
     ]
 
@@ -825,7 +757,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
     ]
 
     # Compare the listened tags distribution to the recommended tags distribution for a user
-    tasks += [
+    tasks1 = [
         # High organic div, low reco div
         PlotUserListeningRecommendationsTagsDistributions(
             dataset=msd_dataset,
@@ -875,11 +807,29 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS,
+        ),
+        PlotUserListeningRecommendationsTagsDistributions(
+            dataset=msd_dataset,
+            user='8c1fb29c006c873da67927ed944ae5b9aac05355',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+        ),
+        PlotUserListeningRecommendationsTagsDistributions(
+            dataset=msd_dataset,
+            user='fb55b71799561c34e6edf10ce72bfbe2520601fe',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
         ),
     ]
     
     # Compare the listened, recommended and reco+listened tags distributions
-    tasks += [
+    tasks1 = [
         # High organic div, low reco div
         PlotUserTagHistograms(
             dataset=msd_dataset,
@@ -929,6 +879,142 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS,
+        ),
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='8c1fb29c006c873da67927ed944ae5b9aac05355',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+        ),
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='fb55b71799561c34e6edf10ce72bfbe2520601fe',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=10,
+        ),
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='bad44c40d5057f4d496718d97b577acf2281c790',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='08b890a2f7278345978f9b6932709aa5468f3e41',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='c3eee61e081ea89785c4fa4a4a0f29f9f5eb5829',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='cba327fdb10439a837331261b06b26cfb717a6d2',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='e6cdf0de3904fc6f40171a55eaa871503593cb06',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+    ]
+
+    tasks += [
+        # très diversifié au départ, decrease
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='f168dfc09049c7b08d55f4afbbf12da6e7e0a10e',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+        # assez diversifié au départ, decrease
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='c9fe89fbfedf046d5d61a8361b00bab841da090f',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+        # très diversifié au départ, très actif, decrease
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='165300f45335433b38053f9b3617cc4eadaa2ecf',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+        # très diversifié au départ, increase
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='2e57bafa1e5e39c0c5bf460aaf727e9ca4e11a35',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+        # assez diversifié au départ, increase
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='f20fd75195cf378de0bb481b24936e12aabf8a19',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+        # très diversifié au départ, très actif, increase. 
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='767153bf012dfe221b8bd8d45aa7d649aa37845a',
+            n_tags=15,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
         ),
     ]
     
