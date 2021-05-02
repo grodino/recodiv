@@ -13,6 +13,7 @@ import pandas as pd
 from tqdm import tqdm
 from matplotlib import colors
 from matplotlib import pyplot as pl
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from recodiv.utils import dataset_info
 from recodiv.utils import plot_histogram
@@ -2896,10 +2897,10 @@ class PlotUserTagHistograms(luigi.Task):
 
         return {
             'png': luigi.LocalTarget(
-                folder.joinpath(f'{self.n_recommendations}reco-user{self.user}-tag-histograms.png')
+                folder.joinpath(f'increase{self.alpha}-{self.n_recommendations}reco-user{self.user}-tag-histograms.png')
             ),
             'latex': luigi.LocalTarget(
-                folder.joinpath(f'{self.n_recommendations}reco-user{self.user}-tag-histograms.tex')
+                folder.joinpath(f'increase{self.alpha}-{self.n_recommendations}reco-user{self.user}-tag-histograms.tex')
             ),
         }
         
@@ -2919,23 +2920,23 @@ class PlotUserTagHistograms(luigi.Task):
         after_reco_distribution: pd.DataFrame = pd.read_csv(
             self.input()['after_reco_tags'].path, index_col=0
         ).reset_index().rename(columns={
-            'index': 'tag', 'weight': 'after_reco'
+            'index': 'tag', 'weight': 'afterreco'
         })
 
         heaviest_tags = pd.merge(
-            listened_distribution[:self.n_tags],
-            reco_distribution[:self.n_tags], 
+            listened_distribution,
+            reco_distribution, 
             on='tag',
             how='outer'
         )
 
-        # heaviest_tags_after_reco = pd.merge(
-        #     heaviest_tags,
-        #     after_reco_distribution,
-        #     on='tag',
-        #     how='left'
-        # )
-        heaviest_tags_after_reco = after_reco_distribution[:len(heaviest_tags)]
+        heaviest_tags_after_reco = pd.merge(
+            heaviest_tags,
+            after_reco_distribution,
+            on='tag',
+            how='left'
+        )[:self.n_tags]
+        heaviest_tags_after_reco['afterreco'] = -heaviest_tags_after_reco['afterreco']
 
         increase: pd.DataFrame = pd.read_csv(self.input()['increase'].path)
 
@@ -2944,35 +2945,64 @@ class PlotUserTagHistograms(luigi.Task):
         else:
             color = 'red'
 
-        fig, axes = pl.subplots(2, 1)
+        width = .8
+        fig, axes = pl.subplots(1, 1)
         
-        ax = heaviest_tags.plot.bar(
+        # Plot the listened and recommended tags distributions
+        ax = heaviest_tags[:self.n_tags].plot.bar(
             x='tag', 
             # logy=True, 
-            ax=axes[0],
+            # ax=axes[0],
+            ax=axes,
             title='',
             xlabel='',
-            width=.8,
+            width=width,
         )
-        ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
-        pl.setp(ax.get_xticklabels(), rotation=40, rotation_mode="anchor", ha="left")
         
+        # Plot the recommended+listened tags distribution
         ax = heaviest_tags_after_reco.plot.bar(
             x='tag', 
-            y='after_reco', 
-            # logy=True, 
-            ax=axes[1],
+            y='afterreco', 
+            ax=ax,
             color=color,
             title='',
             xlabel='',
-            width=.4,
+            width=width,
+            bottom=0,
         )
+
+        # Inset plot to show the whole recommended+listened tags distribution
+        axins = inset_axes(ax, width=1.3, height=0.4, loc=4)
+        axins.tick_params(labelleft=False, labelbottom=False, bottom=False, left=False)
+
+        min_value = after_reco_distribution['afterreco'].quantile(.85)
+        after_reco_distribution[after_reco_distribution['afterreco'] > min_value].plot.bar(ax=axins, color=color)
+        axins.get_legend().remove()
+
+        # Nice tags display
         ax.tick_params(top=False, bottom=True, labeltop=False, labelbottom=True)
         pl.setp(ax.get_xticklabels(), rotation=-40, rotation_mode="anchor", ha="left")
 
-        fig.subplots_adjust(bottom=0.2, top=0.8)
+        y_ticks = ax.get_yticks()
+        ax.set_yticklabels([f'{abs(y_tick):.02f}' for y_tick in y_ticks])
+
+        x_ticks = ax.get_xticks()
+        ax.plot([x_ticks[0] - width/2, x_ticks[-1] + width/2], [0, 0], '--', c='0.01')
+
+        fig.subplots_adjust(bottom=0.2)
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
-        tikzplotlib.save(self.output()['latex'].path)
+
+        inset = 'at={(insetPosition)},anchor={outer south east},\nwidth=1.3in,height=1in,'
+        inset_coord = '\coordinate (insetPosition) at (rel axis cs:0.95,0.05);'
+    
+        with open(self.output()['latex'].path, 'w') as file:
+            code = tikzplotlib.get_tikz_code()
+            code = code.replace('anchor=west','anchor=north west, font=\\tiny')
+            code = code.replace('xmajorticks=false,', 'xmajorticks=false,\n' + inset)
+            code = code.replace('\\addlegendentry{listened}', '\\addlegendentry{listened}\n' + inset_coord)
+
+            file.write(code)
+        # tikzplotlib.save(self.output()['latex'].path)
 
 
 class MetricsSummary(luigi.Task):

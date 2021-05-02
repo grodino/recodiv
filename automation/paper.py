@@ -955,12 +955,13 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         ),
     ]
 
+    # Compare the listened, recommended and reco+listened tags distributions
     tasks += [
         # très diversifié au départ, decrease
         PlotUserTagHistograms(
             dataset=msd_dataset,
             user='f168dfc09049c7b08d55f4afbbf12da6e7e0a10e',
-            n_tags=15,
+            n_tags=25,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -970,7 +971,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         PlotUserTagHistograms(
             dataset=msd_dataset,
             user='c9fe89fbfedf046d5d61a8361b00bab841da090f',
-            n_tags=15,
+            n_tags=25,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -980,7 +981,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         PlotUserTagHistograms(
             dataset=msd_dataset,
             user='165300f45335433b38053f9b3617cc4eadaa2ecf',
-            n_tags=15,
+            n_tags=25,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -990,7 +991,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         PlotUserTagHistograms(
             dataset=msd_dataset,
             user='2e57bafa1e5e39c0c5bf460aaf727e9ca4e11a35',
-            n_tags=15,
+            n_tags=25,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -1000,7 +1001,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         PlotUserTagHistograms(
             dataset=msd_dataset,
             user='f20fd75195cf378de0bb481b24936e12aabf8a19',
-            n_tags=15,
+            n_tags=25,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -1010,7 +1011,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         PlotUserTagHistograms(
             dataset=msd_dataset,
             user='767153bf012dfe221b8bd8d45aa7d649aa37845a',
-            n_tags=15,
+            n_tags=25,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
