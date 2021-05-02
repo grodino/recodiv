@@ -3206,6 +3206,7 @@ class ComputeRecommendationDiversityVsLatentFactors(luigi.Task):
                 data.loc[n_factors, f'{n_recommendations} recommendations'] = \
                     sum(diversities.values()) / len(diversities)
 
+        data = data.reset_index().rename(columns={'index': 'n_factors'})
         data.to_csv(self.output().path)
 
 
@@ -3216,8 +3217,8 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    alpha = luigi.parameter.FloatParameter(
-        default=2, description="The true diversity order"
+    alpha_values = luigi.parameter.FloatParameter(
+        description="The true diversity order values"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -3239,33 +3240,63 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
     )
 
     def requires(self):
-        return ComputeRecommendationDiversityVsLatentFactors(
-            dataset=self.dataset,
-            alpha=self.alpha,
-            model_n_iterations=self.model_n_iterations,
-            n_factors_values=self.n_factors_values,
-            model_regularization=self.model_regularization,
-            model_user_fraction=self.model_user_fraction,
-            n_recommendations_values=self.n_recommendations_values,
-        )
+        req = {}
+
+        for alpha in self.alpha_values:
+            req[alpha] = ComputeRecommendationDiversityVsLatentFactors(
+                dataset=self.dataset,
+                alpha=alpha,
+                model_n_iterations=self.model_n_iterations,
+                n_factors_values=self.n_factors_values,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations_values=self.n_recommendations_values,
+            )
+        
+        return req
 
     def output(self):
         figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
-            f'{self.n_recommendations_values}recommendations_diversity{self.alpha}_vs_{self.n_factors_values}factors_{self.model_regularization}reg.png'
+            f'{self.n_recommendations_values}recommendations_diversity{self.alpha_values}_vs_{self.n_factors_values}factors_{self.model_regularization}reg.png'
         ))
 
     def run(self):
         self.output().makedirs()
-        data: pd.DataFrame = pd.read_csv(self.input().path, index_col=0)
+        data = {n_recommendations: pd.DataFrame(columns=['n_factors',]) for n_recommendations in self.n_recommendations_values}
 
-        if self.alpha == 0:
-            data = data.subtract(data.min())
-            # data = data.divide(data.std())
+        for alpha in self.alpha_values:
+            diversities: pd.DataFrame = pd.read_csv(self.input()[alpha].path, index_col=0)
+            
+            for n_recommendations in self.n_recommendations_values:
+                column = diversities[['n_factors', f'{n_recommendations} recommendations']].rename(
+                    columns={f'{n_recommendations} recommendations': f'diversity{alpha}'}
+                )
+                data[n_recommendations] = pd.merge(
+                    data[n_recommendations],
+                    column,
+                    on='n_factors',
+                    how='outer'
+                )
 
-            data.plot(xlabel="number of factors", ylabel="diversity (translated)", logx=True)
-        else:
-            data.plot(xlabel="number of factors", ylabel="diversity", logx=True)
+        fig, ax = pl.subplots(1, 1)
+        markers = ['+', 'o', '^']
+        colors= ['r', 'g', 'b']
+        color = {f'diversity{alpha}': colors[i] for i, alpha in enumerate(self.alpha_values)}
+        
+        for i, n_recommendations in enumerate(self.n_recommendations_values):
+            data[n_recommendations] = data[n_recommendations].subtract(data[n_recommendations].min())
+            data[n_recommendations] = data[n_recommendations].divide(data[n_recommendations].std())
+
+            data[n_recommendations].plot.line(
+                ax=ax,
+                x='n_factors',
+                xlabel="number of factors", 
+                ylabel="diversity", 
+                logx=True, 
+                marker=markers[i],
+                color=color,
+            )
             
         pl.savefig(self.output().path, format='png', dpi=300)
 

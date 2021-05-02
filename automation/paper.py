@@ -630,28 +630,9 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
 
     # Recommendation diversity versus the number of latent factors used in the model
     tasks += [
-        # Herfindal
         PlotRecommendationDiversityVsLatentFactors(
             dataset=msd_dataset,
-            alpha=2,
-            model_n_iterations=N_ITERATIONS,
-            n_factors_values=N_FACTORS_VALUES,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations_values=[10, 50, 500]
-        ),
-        # Richness
-        PlotRecommendationDiversityVsLatentFactors(
-            dataset=msd_dataset,
-            alpha=0,
-            model_n_iterations=N_ITERATIONS,
-            n_factors_values=N_FACTORS_VALUES,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations_values=[10, 50, 500]
-        ),
-        # Berger-Parker
-        PlotRecommendationDiversityVsLatentFactors(
-            dataset=msd_dataset,
-            alpha=float('inf'),
+            alpha_values=[0, 2, float('inf')],
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,
