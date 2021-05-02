@@ -2822,6 +2822,10 @@ class PlotUserTagHistograms(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
+
     model_n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
@@ -2876,17 +2880,31 @@ class PlotUserTagHistograms(luigi.Task):
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             ),
+            'increase': ComputeRecommendationWithListeningsUsersDiversityIncrease(
+                dataset=self.dataset,
+                alpha=self.alpha,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
         }
 
     def output(self):
         folder = Path(self.input()['recommended_tags'].path).parent.joinpath('figures')
 
-        return luigi.LocalTarget(
-            folder.joinpath(f'{self.n_recommendations}reco-user{self.user}-tag-histograms.png')
-        )
+        return {
+            'png': luigi.LocalTarget(
+                folder.joinpath(f'{self.n_recommendations}reco-user{self.user}-tag-histograms.png')
+            ),
+            'latex': luigi.LocalTarget(
+                folder.joinpath(f'{self.n_recommendations}reco-user{self.user}-tag-histograms.tex')
+            ),
+        }
         
     def run(self):
-        self.output().makedirs()
+        self.output()['png'].makedirs()
 
         reco_distribution: pd.DataFrame = pd.read_csv(
             self.input()['recommended_tags'].path, index_col=0
@@ -2901,7 +2919,7 @@ class PlotUserTagHistograms(luigi.Task):
         after_reco_distribution: pd.DataFrame = pd.read_csv(
             self.input()['after_reco_tags'].path, index_col=0
         ).reset_index().rename(columns={
-            'index': 'tag', 'weight': 'listened'
+            'index': 'tag', 'weight': 'after_reco'
         })
 
         heaviest_tags = pd.merge(
@@ -2911,18 +2929,50 @@ class PlotUserTagHistograms(luigi.Task):
             how='outer'
         )
 
-        heaviest_tags_after_reco = after_reco_distribution[:self.n_tags]
+        # heaviest_tags_after_reco = pd.merge(
+        #     heaviest_tags,
+        #     after_reco_distribution,
+        #     on='tag',
+        #     how='left'
+        # )
+        heaviest_tags_after_reco = after_reco_distribution[:len(heaviest_tags)]
 
-        fig, axes = pl.subplots(1, 2)
+        increase: pd.DataFrame = pd.read_csv(self.input()['increase'].path)
+
+        if float(increase[increase['user'] == self.user]['diversity']) > 0:
+            color = 'green'
+        else:
+            color = 'red'
+
+        fig, axes = pl.subplots(2, 1)
         
-        ax = heaviest_tags.plot.bar(x='tag', logy=True, ax=axes[0])
+        ax = heaviest_tags.plot.bar(
+            x='tag', 
+            # logy=True, 
+            ax=axes[0],
+            title='',
+            xlabel='',
+            width=.8,
+        )
+        ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
+        pl.setp(ax.get_xticklabels(), rotation=40, rotation_mode="anchor", ha="left")
+        
+        ax = heaviest_tags_after_reco.plot.bar(
+            x='tag', 
+            y='after_reco', 
+            # logy=True, 
+            ax=axes[1],
+            color=color,
+            title='',
+            xlabel='',
+            width=.4,
+        )
+        ax.tick_params(top=False, bottom=True, labeltop=False, labelbottom=True)
         pl.setp(ax.get_xticklabels(), rotation=-40, rotation_mode="anchor", ha="left")
 
-        ax = heaviest_tags_after_reco.plot.bar(x='tag', ax=axes[1])
-
-        pl.suptitle(f'{self.n_recommendations} reco, {self.model_n_factors} factors, {self.model_regularization} regularization')
-
-        pl.savefig(self.output().path, format='png', dpi=300)
+        fig.subplots_adjust(bottom=0.2, top=0.8)
+        pl.savefig(self.output()['png'].path, format='png', dpi=300)
+        tikzplotlib.save(self.output()['latex'].path)
 
 
 class MetricsSummary(luigi.Task):
