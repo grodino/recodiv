@@ -13,6 +13,7 @@ import pandas as pd
 from tqdm import tqdm
 from matplotlib import colors
 from matplotlib import pyplot as pl
+from matplotlib import patches as mpatches
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from recodiv.utils import dataset_info
@@ -2971,17 +2972,21 @@ class PlotUserTagHistograms(luigi.Task):
             bottom=0,
         )
 
+        # Remove legend
+        # ax.get_legend().remove()
+        pl.legend(loc=4)
+
         # Inset plot to show the whole recommended+listened tags distribution
-        axins = inset_axes(ax, width=1.3, height=0.4, loc=4)
+        axins = inset_axes(ax, width=3, height=1, loc=1)
         axins.tick_params(labelleft=False, labelbottom=False, bottom=False, left=False)
 
-        min_value = after_reco_distribution['afterreco'].quantile(.85)
+        min_value = after_reco_distribution['afterreco'].quantile(.9)
         after_reco_distribution[after_reco_distribution['afterreco'] > min_value].plot.bar(ax=axins, color=color)
         axins.get_legend().remove()
 
         # Nice tags display
         ax.tick_params(top=False, bottom=True, labeltop=False, labelbottom=True)
-        pl.setp(ax.get_xticklabels(), rotation=-40, rotation_mode="anchor", ha="left")
+        pl.setp(ax.get_xticklabels(), rotation=-90, rotation_mode="anchor", ha="left")
 
         y_ticks = ax.get_yticks()
         ax.set_yticklabels([f'{abs(y_tick):.02f}' for y_tick in y_ticks])
@@ -2992,17 +2997,15 @@ class PlotUserTagHistograms(luigi.Task):
         fig.subplots_adjust(bottom=0.2)
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
 
-        inset = 'at={(insetPosition)},anchor={outer south east},\nwidth=1.5in,height=1.2in,'
-        inset_coord = '\coordinate (insetPosition) at (rel axis cs:0.95,0.05);'
+        inset = 'at={(insetPosition)},anchor={outer north east},\nwidth=2in,height=1.25in,'
+        inset_coord = '\coordinate (insetPosition) at (rel axis cs:0.95,0.95);'
     
         with open(self.output()['latex'].path, 'w') as file:
             code = tikzplotlib.get_tikz_code()
-            code = code.replace('anchor=west','anchor=north west, font=\\tiny')
             code = code.replace('xmajorticks=false,', 'xmajorticks=false,\n' + inset)
             code = code.replace('\\addlegendentry{listened}', '\\addlegendentry{listened}\n' + inset_coord)
 
             file.write(code)
-        # tikzplotlib.save(self.output()['latex'].path)
 
 
 class MetricsSummary(luigi.Task):
@@ -3281,8 +3284,8 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
 
         fig, ax = pl.subplots(1, 1)
         markers = ['+', 'o', '^']
-        colors= ['r', 'g', 'b']
-        color = {f'diversity{alpha}': colors[i] for i, alpha in enumerate(self.alpha_values)}
+        color= ['r', 'g', 'b']
+        color = {f'diversity{alpha}': color[i] for i, alpha in enumerate(self.alpha_values)}
         
         for i, n_recommendations in enumerate(self.n_recommendations_values):
             data[n_recommendations] = data[n_recommendations].subtract(data[n_recommendations].min())
