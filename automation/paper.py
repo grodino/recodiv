@@ -756,189 +756,12 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         ),
     ]
 
-    # Compare the listened tags distribution to the recommended tags distribution for a user
-    tasks1 = [
-        # High organic div, low reco div
-        PlotUserListeningRecommendationsTagsDistributions(
-            dataset=msd_dataset,
-            user='dfe4fbf7cfa359b8489f1bbe488ef3a1affe4e94',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-        ),
-        # Average organic div, same reco div
-        PlotUserListeningRecommendationsTagsDistributions(
-            dataset=msd_dataset,
-            user='fc262e03c598b4e89b479f33162e6408d6ba90bf',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-        ),
-        # Low organic div, high recommended div
-        PlotUserListeningRecommendationsTagsDistributions(
-            dataset=msd_dataset,
-            user='2821f2302af120e18a07a3efd934c65cbccdd6f0',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-        ),
-        # Average organic div, high increase
-        PlotUserListeningRecommendationsTagsDistributions(
-            dataset=msd_dataset,
-            user='8a2986ddf6f0380a58638e384cc47ee0759a6369',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-        ),
-        # Average organic div, low increase
-        PlotUserListeningRecommendationsTagsDistributions(
-            dataset=msd_dataset,
-            user='8f37b100d7f7aa6b3b1c6a4d0e2955e625688d6b',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-        ),
-        PlotUserListeningRecommendationsTagsDistributions(
-            dataset=msd_dataset,
-            user='8c1fb29c006c873da67927ed944ae5b9aac05355',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10,
-        ),
-        PlotUserListeningRecommendationsTagsDistributions(
-            dataset=msd_dataset,
-            user='fb55b71799561c34e6edf10ce72bfbe2520601fe',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10,
-        ),
-    ]
-    
     # Compare the listened, recommended and reco+listened tags distributions
-    tasks1 = [
-        # High organic div, low reco div
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='dfe4fbf7cfa359b8489f1bbe488ef3a1affe4e94',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-        ),
-        # Average organic div, same reco div
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='fc262e03c598b4e89b479f33162e6408d6ba90bf',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-        ),
-        # Low organic div, high recommended div
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='2821f2302af120e18a07a3efd934c65cbccdd6f0',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-        ),
-        # Average organic div, high increase
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='8a2986ddf6f0380a58638e384cc47ee0759a6369',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-        ),
-        # Average organic div, low increase
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='8f37b100d7f7aa6b3b1c6a4d0e2955e625688d6b',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-        ),
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='8c1fb29c006c873da67927ed944ae5b9aac05355',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10,
-        ),
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='fb55b71799561c34e6edf10ce72bfbe2520601fe',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10,
-        ),
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='bad44c40d5057f4d496718d97b577acf2281c790',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=50,
-        ),
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='08b890a2f7278345978f9b6932709aa5468f3e41',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=50,
-        ),
-
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='c3eee61e081ea89785c4fa4a4a0f29f9f5eb5829',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=50,
-        ),
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='cba327fdb10439a837331261b06b26cfb717a6d2',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=50,
-        ),
+    tasks += [
         PlotUserTagHistograms(
             dataset=msd_dataset,
             user='e6cdf0de3904fc6f40171a55eaa871503593cb06',
-            n_tags=15,
+            n_tags=25,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
@@ -947,37 +770,12 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         PlotUserTagHistograms(
             dataset=msd_dataset,
             user='c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
-            n_tags=15,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=50,
-        ),
-    ]
-
-    # Compare the listened, recommended and reco+listened tags distributions
-    tasks += [
-        # très diversifié au départ, decrease
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='f168dfc09049c7b08d55f4afbbf12da6e7e0a10e',
             n_tags=25,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=50,
         ),
-        # assez diversifié au départ, decrease
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='c9fe89fbfedf046d5d61a8361b00bab841da090f',
-            n_tags=25,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=50,
-        ),
-        # très diversifié au départ, très actif, decrease
         PlotUserTagHistograms(
             dataset=msd_dataset,
             user='165300f45335433b38053f9b3617cc4eadaa2ecf',
@@ -987,27 +785,6 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=50,
         ),
-        # très diversifié au départ, increase
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='2e57bafa1e5e39c0c5bf460aaf727e9ca4e11a35',
-            n_tags=25,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=50,
-        ),
-        # assez diversifié au départ, increase
-        PlotUserTagHistograms(
-            dataset=msd_dataset,
-            user='f20fd75195cf378de0bb481b24936e12aabf8a19',
-            n_tags=25,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=50,
-        ),
-        # très diversifié au départ, très actif, increase. 
         PlotUserTagHistograms(
             dataset=msd_dataset,
             user='767153bf012dfe221b8bd8d45aa7d649aa37845a',

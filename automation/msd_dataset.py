@@ -2992,7 +2992,7 @@ class PlotUserTagHistograms(luigi.Task):
         fig.subplots_adjust(bottom=0.2)
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
 
-        inset = 'at={(insetPosition)},anchor={outer south east},\nwidth=1.3in,height=1in,'
+        inset = 'at={(insetPosition)},anchor={outer south east},\nwidth=1.5in,height=1.2in,'
         inset_coord = '\coordinate (insetPosition) at (rel axis cs:0.95,0.05);'
     
         with open(self.output()['latex'].path, 'w') as file:
