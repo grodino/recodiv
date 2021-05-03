@@ -253,24 +253,6 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             n_recommendations=N_RECOMMENDATIONS,
             alpha=2
         ),
-        # Richness
-        PlotDiversitiesIncreaseHistogram(
-            dataset=msd_dataset,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-            alpha=0
-        ),
-        # Berger-Parker
-        PlotDiversitiesIncreaseHistogram(
-            dataset=msd_dataset,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS,
-            alpha=float('inf')
-        ),
          # Herfindal
         PlotDiversitiesIncreaseHistogram(
             dataset=msd_dataset,
@@ -280,24 +262,6 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             n_recommendations=10,
             alpha=2
         ),
-        # Richness
-        PlotDiversitiesIncreaseHistogram(
-            dataset=msd_dataset,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10,
-            alpha=0
-        ),
-        # Berger-Parker
-        PlotDiversitiesIncreaseHistogram(
-            dataset=msd_dataset,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10,
-            alpha=float('inf')
-        ),
          # Herfindal
         PlotDiversitiesIncreaseHistogram(
             dataset=msd_dataset,
@@ -306,24 +270,6 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=500,
             alpha=2
-        ),
-        # Richness
-        PlotDiversitiesIncreaseHistogram(
-            dataset=msd_dataset,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500,
-            alpha=0
-        ),
-        # Berger-Parker
-        PlotDiversitiesIncreaseHistogram(
-            dataset=msd_dataset,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500,
-            alpha=float('inf')
         ),
     ]
     
@@ -424,23 +370,8 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
-        ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=2,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
-        ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=2,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
+            n_recommendations=N_RECOMMENDATIONS,
+            bounds=[None, 80, None, None]
         ),
         # Richness
         PlotRecommendationDiversityVsUserDiversity(
@@ -451,22 +382,6 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS
         ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=0,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
-        ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=0,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
-        ),
         # Berger-Parker
         PlotRecommendationDiversityVsUserDiversity(
             dataset=msd_dataset,
@@ -475,97 +390,6 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS
-        ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=float('inf'),
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
-        ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=float('inf'),
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
-        ),
-        # Almost Berger-Parker 1_000
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=1_000,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
-        ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=1_000,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
-        ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=1_000,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
-        ),
-        # Almost Berger-Parker 500
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=500,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
-        ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=500,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
-        ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=500,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
-        ),
-        # Almost Berger-Parker 250
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=250,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=N_RECOMMENDATIONS
-        ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=250,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=10
-        ),
-        PlotRecommendationDiversityVsUserDiversity(
-            dataset=msd_dataset,
-            alpha=250,
-            model_n_iterations=N_ITERATIONS,
-            model_n_factors=OPT_N_FACTORS,
-            model_regularization=OPT_REGULARIZATION,
-            n_recommendations=500
         ),
     ]
 
@@ -632,7 +456,23 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
     tasks += [
         PlotRecommendationDiversityVsLatentFactors(
             dataset=msd_dataset,
-            alpha_values=[0, 2, float('inf')],
+            alpha=2,
+            model_n_iterations=N_ITERATIONS,
+            n_factors_values=N_FACTORS_VALUES,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations_values=[10, 50, 500]
+        ),
+        PlotRecommendationDiversityVsLatentFactors(
+            dataset=msd_dataset,
+            alpha=0,
+            model_n_iterations=N_ITERATIONS,
+            n_factors_values=N_FACTORS_VALUES,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations_values=[10, 50, 500]
+        ),
+        PlotRecommendationDiversityVsLatentFactors(
+            dataset=msd_dataset,
+            alpha=float('inf'),
             model_n_iterations=N_ITERATIONS,
             n_factors_values=N_FACTORS_VALUES,
             model_regularization=OPT_REGULARIZATION,

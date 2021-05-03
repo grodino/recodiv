@@ -1852,6 +1852,14 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         default=50, description='Number of recommendation to generate per user'
     )
 
+    bounds = luigi.parameter.ListParameter(
+        default=None, 
+        description=(
+            "The bounding box of the graph supplied as (x_min, x_max, y_min,"
+            "y_max). If a value is None, leaves matplotlib default"
+        )
+    )
+
     def requires(self):
         return {
             'train_test': GenerateTrainTest(
@@ -1907,6 +1915,9 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         _, ax = pl.subplots()
         ax.plot([low_bound, up_bound], [low_bound, up_bound], '--', c='purple')
 
+        if self.bounds == None:
+            self.bounds = [None, None, None, None]
+
         merged.plot.scatter(
             ax= ax,
             x='diversity', 
@@ -1915,14 +1926,26 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
             c='volume', 
             colormap='viridis',
             norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
-            # xlim=(0, 100)    
+            xlim=self.bounds[:2],
+            ylim=self.bounds[2:],
         )
-        pl.xlabel('"organic" diversity')
+        pl.xlabel('organic diversity')
         pl.ylabel('recommendation diversity')
 
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
-        tikzplotlib.save(self.output()['latex'].path)
-
+        
+        with open(self.output()['latex'].path, 'w') as file:
+            code: str = tikzplotlib.get_tikz_code(
+                extra_axis_parameters=['clip mode=individual','clip marker paths=true']
+            )
+            
+            code = code.replace('ytick={1,10,100,1000}', 'ytick={0,1,2,3}')
+            code = code.replace('meta=colordata', 'meta expr=lg10(\\thisrow{colordata})')
+            code = code.replace('point meta', '% point meta')
+            code = code.replace('semithick', 'very thick')
+            
+            file.write(code)
+            
         pl.clf()
 
         del diversities, reco_diversities, merged
@@ -2185,13 +2208,18 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
 
     def output(self):
         figures = Path(self.input().path).parent.joinpath('figures')
-        return luigi.LocalTarget(figures.joinpath(
-            f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_histogram.png'
-        ))
+        return {
+            'png': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_histogram.png'
+            )),
+            'latex': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_histogram.png'
+            )),
+        }
 
     
     def run(self):
-        self.output().makedirs()
+        self.output()['png'].makedirs()
         deltas: pd.DataFrame = pd.read_csv(self.input().path)
 
         total = deltas.count()['user']
@@ -3220,8 +3248,8 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    alpha_values = luigi.parameter.FloatParameter(
-        description="The true diversity order values"
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     model_n_iterations = luigi.parameter.IntParameter(
@@ -3245,63 +3273,88 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
     def requires(self):
         req = {}
 
-        for alpha in self.alpha_values:
-            req[alpha] = ComputeRecommendationDiversityVsLatentFactors(
+        for n_factors in self.n_factors_values:
+            req[n_factors] = EvaluateModel(
                 dataset=self.dataset,
-                alpha=alpha,
                 model_n_iterations=self.model_n_iterations,
-                n_factors_values=self.n_factors_values,
+                model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
-                n_recommendations_values=self.n_recommendations_values,
+                n_recommendations=50
             )
-        
+
+        req['diversity'] = ComputeRecommendationDiversityVsLatentFactors(
+            dataset=self.dataset,
+            alpha=self.alpha,
+            model_n_iterations=self.model_n_iterations,
+            n_factors_values=self.n_factors_values,
+            model_regularization=self.model_regularization,
+            model_user_fraction=self.model_user_fraction,
+            n_recommendations_values=self.n_recommendations_values,
+        )
+
         return req
 
     def output(self):
         figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
-        return luigi.LocalTarget(figures.joinpath(
-            f'{self.n_recommendations_values}recommendations_diversity{self.alpha_values}_vs_{self.n_factors_values}factors_{self.model_regularization}reg.png'
-        ))
+        return {
+            'png': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations_values}recommendations_diversity{self.alpha}_vs_{self.n_factors_values}factors_{self.model_regularization}reg.png'
+            )),
+            'latex': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations_values}recommendations_diversity{self.alpha}_vs_{self.n_factors_values}factors_{self.model_regularization}reg.tex'
+            )),
+        }
 
     def run(self):
-        self.output().makedirs()
-        data = {n_recommendations: pd.DataFrame(columns=['n_factors',]) for n_recommendations in self.n_recommendations_values}
+        self.output()['png'].makedirs()
+        data: pd.DataFrame = pd.read_csv(self.input()['diversity'].path, index_col=0)
 
-        for alpha in self.alpha_values:
-            diversities: pd.DataFrame = pd.read_csv(self.input()[alpha].path, index_col=0)
-            
-            for n_recommendations in self.n_recommendations_values:
-                column = diversities[['n_factors', f'{n_recommendations} recommendations']].rename(
-                    columns={f'{n_recommendations} recommendations': f'diversity{alpha}'}
-                )
-                data[n_recommendations] = pd.merge(
-                    data[n_recommendations],
-                    column,
-                    on='n_factors',
-                    how='outer'
-                )
+        data = data[1:].set_index('n_factors')       
+        data['ndcg'] = 0
 
-        fig, ax = pl.subplots(1, 1)
-        markers = ['+', 'o', '^']
-        color= ['r', 'g', 'b']
-        color = {f'diversity{alpha}': color[i] for i, alpha in enumerate(self.alpha_values)}
-        
-        for i, n_recommendations in enumerate(self.n_recommendations_values):
-            data[n_recommendations] = data[n_recommendations].subtract(data[n_recommendations].min())
-            data[n_recommendations] = data[n_recommendations].divide(data[n_recommendations].std())
+        for n_factors in self.n_factors_values[1:]:
+            metric = pd.read_json(
+                self.input()[n_factors].path, 
+                orient='index'
+            ).transpose()
+            data.loc[n_factors, 'ndcg'] = metric['ndcg'][0]
 
-            data[n_recommendations].plot.line(
+        data = data.subtract(data.min())
+        data = data.divide(data.max())
+        data = data.reset_index()
+
+        _, ax = pl.subplots(1,1)
+
+        data.plot(
+            ax=ax,
+            x='n_factors',
+            y='ndcg',
+            xlabel='number of factors', 
+            ylabel='diversity (normalized)', 
+            logx=True,
+            style='--',
+            linewidth='2',
+            color='black',
+            legend='NDCG'
+        )
+
+        for n_reco in self.n_recommendations_values:
+            data.plot(
                 ax=ax,
                 x='n_factors',
-                xlabel="number of factors", 
-                ylabel="diversity", 
-                logx=True, 
-                marker=markers[i],
-                color=color,
+                y=f'{n_reco} recommendations',
+                xlabel='number of factors', 
+                ylabel='diversity (normalized)', 
+                logx=True,
+                style='-',
+                linewidth='1',
             )
-            
-        pl.savefig(self.output().path, format='png', dpi=300)
+
+        ax.legend(loc=4)
+
+        pl.savefig(self.output()['png'].path, format='png', dpi=300)
+        tikzplotlib.save(self.output()['latex'].path)
 
 
 # Deprecated
