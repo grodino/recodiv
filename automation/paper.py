@@ -283,7 +283,14 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=50,
-            bounds=[0, 75, -30, 40]
+            bounds=[0, 75, -40, 40],
+            users=[
+                '165300f45335433b38053f9b3617cc4eadaa2ecf',
+                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
+                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
+                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+            ],
+            show_colorbar=False
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -292,7 +299,14 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=500,
-            bounds=[0, 75, -30, 40]
+            bounds=[0, 75, -40, 40],
+            users=[
+                '165300f45335433b38053f9b3617cc4eadaa2ecf',
+                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
+                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
+                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+            ],
+            show_colorbar=False
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -301,7 +315,14 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=10,
-            bounds=[0, 75, -30, 30]
+            bounds=[0, 75, -40, 40],
+            users=[
+                '165300f45335433b38053f9b3617cc4eadaa2ecf',
+                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
+                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
+                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+            ],
+            show_colorbar=False
         ),
         # Richness
         PlotUserDiversityIncreaseVsUserDiversity(
@@ -311,7 +332,14 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=50,
-            bounds=[-15, 800, None, None],
+            bounds=[-25, 800, -10, 1_000],
+            users=[
+                '165300f45335433b38053f9b3617cc4eadaa2ecf',
+                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
+                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
+                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+            ],
+            show_colorbar=True
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -320,7 +348,14 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=500,
-            bounds=[-15, 800, None, None],
+            bounds=[-15, 800, -10, 1_000],
+            users=[
+                '165300f45335433b38053f9b3617cc4eadaa2ecf',
+                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
+                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
+                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+            ],
+            show_colorbar=False
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -329,7 +364,14 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=10,
-            bounds=[-15, 800, None, None],
+            bounds=[-15, 800, -10, 1_000],
+            users=[
+                '165300f45335433b38053f9b3617cc4eadaa2ecf',
+                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
+                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
+                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+            ],
+            show_colorbar=False
         ),
         # Berger-Parker
         PlotUserDiversityIncreaseVsUserDiversity(
@@ -339,7 +381,14 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=50,
-            bounds=[0, 25, -12, 12],
+            bounds=[0, 25, -25, 15],
+            users=[
+                '165300f45335433b38053f9b3617cc4eadaa2ecf',
+                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
+                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
+                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+            ],
+            show_colorbar=False
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -348,7 +397,14 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=500,
-            bounds=[0, 25, -12, 12],
+            bounds=[0, 25, -25, 15],
+            users=[
+                '165300f45335433b38053f9b3617cc4eadaa2ecf',
+                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
+                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
+                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+            ],
+            show_colorbar=False
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
             dataset=msd_dataset,
@@ -357,7 +413,14 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_n_factors=OPT_N_FACTORS,
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=10,
-            bounds=[0, 25, -12, 12],
+            bounds=[0, 25, -25, 15],
+            users=[
+                '165300f45335433b38053f9b3617cc4eadaa2ecf',
+                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
+                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
+                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+            ],
+            show_colorbar=False
         ),
     ]
 
@@ -609,6 +672,15 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         PlotUserTagHistograms(
             dataset=msd_dataset,
             user='c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+            n_tags=20,
+            model_n_iterations=N_ITERATIONS,
+            model_n_factors=OPT_N_FACTORS,
+            model_regularization=OPT_REGULARIZATION,
+            n_recommendations=50,
+        ),
+        PlotUserTagHistograms(
+            dataset=msd_dataset,
+            user='f20fd75195cf378de0bb481b24936e12aabf8a19',
             n_tags=20,
             model_n_iterations=N_ITERATIONS,
             model_n_factors=OPT_N_FACTORS,

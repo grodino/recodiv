@@ -172,7 +172,7 @@ def plot_histogram(values, min_quantile=.1, max_quantile=.9, n_bins=100, ax=None
     else:
         fig = None
 
-    ax.hist(values[(min_value < values) & (values < max_value)], bins=n_bins, log=log)
+    ax.hist(values[(min_value < values) & (values < max_value)], bins=n_bins, log=log, bottom=0)
     ax.axvline(mean, ls='--', color='pink')
     ax.text(mean + 1, 2, f'mean: {mean:.02f}', color='pink')
 

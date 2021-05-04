@@ -2213,7 +2213,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
                 f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_histogram.png'
             )),
             'latex': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_histogram.png'
+                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_histogram.tex'
             )),
         }
 
@@ -2222,23 +2222,17 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         self.output()['png'].makedirs()
         deltas: pd.DataFrame = pd.read_csv(self.input().path)
 
-        total = deltas.count()['user']
-        portion_increased = deltas[deltas['diversity'] > 0].count()['user'] / total
-
         fig, ax = plot_histogram(deltas['diversity'].to_numpy(), min_quantile=0, max_quantile=1, log=True)
-        ax.text(
-            0, 1,
-            f'{100 * portion_increased:0.2f}% increased',
-            horizontalalignment='left',
-            verticalalignment='top',
-            transform = ax.transAxes,
-        )
-        ax.set_xlabel('Diversity index')
-        ax.set_ylabel('User count')
-        ax.set_title('Histogram of diversity increase due to recommendations')
-        fig.savefig(self.output().path, format='png', dpi=300)
+
+        ax.set_xlabel('diversity increase')
+        ax.set_ylabel('user count')
         
-        del fig, ax, deltas
+        pl.savefig(self.output()['png'].path, format='png', dpi=300)
+        # pl.savefig(self.output()['pdf'].path, backend='pgf')
+
+        tikzplotlib.save(self.output()['latex'].path)
+        
+        del ax, deltas
 
 
 class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
@@ -2276,6 +2270,14 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
             "The bounding box of the graph supplied as (x_min, x_max, y_min,"
             "y_max). If a value is None, leaves matplotlib default"
         )
+    )
+
+    users = luigi.ListParameter(
+        default=[], description='Specific users to pinpoint in the graph'
+    )
+
+    show_colorbar = luigi.BoolParameter(
+        default=True, description='Whether to display the colobar or not'
     )
 
     def requires(self):
@@ -2343,24 +2345,42 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
             norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
             xlim=self.bounds[:2],
             ylim=self.bounds[2:],
+            colorbar=self.show_colorbar
         )
 
         ax.plot(x, y, '--', c='purple')
 
-        pl.xlabel('"organic" diversity')
+        markers = ['^', '*', 'o', 's']
+        for i, user in enumerate(self.users):
+            merged[merged['user'] == user].plot(
+                ax=ax,
+                x='diversity', 
+                y='increase', 
+                marker=markers[i],
+                markeredgewidth=1, 
+                # markeredgecolor='yellow',
+                c='red'
+            )
+
+        pl.xlabel('organic diversity')
         pl.ylabel('diversity increase')
+        ax.get_legend().remove()
 
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
 
         with open(self.output()['latex'].path, 'w') as file:
             code: str = tikzplotlib.get_tikz_code(
-                extra_axis_parameters=['clip mode=individual','clip marker paths=true']
+                extra_axis_parameters=['clip mode=individual', 'clip marker paths=true']
             )
             
             code = code.replace('ytick={1,10,100,1000}', 'ytick={0,1,2,3}')
             code = code.replace('meta=colordata', 'meta expr=lg10(\\thisrow{colordata})')
             code = code.replace('point meta', '% point meta')
             code = code.replace('semithick', 'very thick')
+            code = code.replace('colorbar,', 'colorbar horizontal,')
+            code = code.replace('ytick={0,1,2,3}', 'xtick={0,1,2,3}')
+            code = code.replace('yticklabels', 'xticklabels')
+            code = code.replace('ylabel={volume}', 'xlabel={volume},xticklabel pos=upper,at={(0,1.2)},anchor=north west')
             
             file.write(code)
 
@@ -2952,19 +2972,26 @@ class PlotUserTagHistograms(luigi.Task):
             'index': 'tag', 'weight': 'afterreco'
         })
 
+        # Build the index
+        best_listen_tags = listened_distribution['tag'][:10]
+        best_reco_tags = reco_distribution['tag'][:20]
+        best_tags = best_listen_tags.append(best_reco_tags).unique()
+
         heaviest_tags = pd.merge(
             listened_distribution,
             reco_distribution, 
             on='tag',
             how='outer'
         )
+        heaviest_tags = heaviest_tags[heaviest_tags['tag'].isin(best_tags)]
 
         heaviest_tags_after_reco = pd.merge(
             heaviest_tags,
             after_reco_distribution,
             on='tag',
             how='left'
-        )[:self.n_tags]
+        )
+        heaviest_tags_after_reco = after_reco_distribution[:len(heaviest_tags)]
         heaviest_tags_after_reco['afterreco'] = -heaviest_tags_after_reco['afterreco']
 
         increase: pd.DataFrame = pd.read_csv(self.input()['increase'].path)
@@ -2978,7 +3005,7 @@ class PlotUserTagHistograms(luigi.Task):
         fig, axes = pl.subplots(1, 1)
         
         # Plot the listened and recommended tags distributions
-        ax = heaviest_tags[:self.n_tags].plot.bar(
+        ax = heaviest_tags.plot.bar(
             x='tag', 
             # logy=True, 
             # ax=axes[0],
@@ -3008,13 +3035,21 @@ class PlotUserTagHistograms(luigi.Task):
         axins = inset_axes(ax, width=3, height=1, loc=1)
         axins.tick_params(labelleft=False, labelbottom=False, bottom=False, left=False)
 
-        min_value = after_reco_distribution['afterreco'].quantile(.9)
-        after_reco_distribution[after_reco_distribution['afterreco'] > min_value].plot.bar(ax=axins, color=color)
+        after_reco_distribution['afterreco'] = after_reco_distribution['afterreco'].abs()
+        # after_reco_distribution[:50].plot.bar(
+        after_reco_distribution[:40].plot.bar(
+            ax=axins, 
+            x='tag', 
+            y='afterreco', 
+            color=color, 
+            xlabel='',
+            ylabel='',
+        )
         axins.get_legend().remove()
 
         # Nice tags display
         ax.tick_params(top=False, bottom=True, labeltop=False, labelbottom=True)
-        pl.setp(ax.get_xticklabels(), rotation=-90, rotation_mode="anchor", ha="left")
+        pl.setp(ax.get_xticklabels(), rotation=90, rotation_mode="anchor", ha="right")
 
         y_ticks = ax.get_yticks()
         ax.set_yticklabels([f'{abs(y_tick):.02f}' for y_tick in y_ticks])
@@ -3029,7 +3064,9 @@ class PlotUserTagHistograms(luigi.Task):
         inset_coord = '\coordinate (insetPosition) at (rel axis cs:0.95,0.95);'
     
         with open(self.output()['latex'].path, 'w') as file:
-            code = tikzplotlib.get_tikz_code()
+            code = tikzplotlib.get_tikz_code(
+                extra_axis_parameters=['scaled ticks=false', 'tick label style={/pgf/number format/fixed}']
+            )
             code = code.replace('xmajorticks=false,', 'xmajorticks=false,\n' + inset)
             code = code.replace('\\addlegendentry{listened}', '\\addlegendentry{listened}\n' + inset_coord)
 
