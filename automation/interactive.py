@@ -1,10 +1,9 @@
 import json
-from dash_core_components.Graph import Graph
 
 import luigi
 import dash
-import dash_core_components as dcc
-import dash_html_components as html
+from dash import dcc
+from dash import  html
 from dash.dependencies import Input
 from dash.dependencies import Output
 import plotly.express as px
