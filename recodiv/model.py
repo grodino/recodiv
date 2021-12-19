@@ -33,7 +33,7 @@ def split_dataset(ratings, user_fraction=.1):
 
     # There are many ways to separate a dataset in (train, test) data, here are two:
     #   - Row separation: the test set will contain users that the model knows.
-    #     The performance of the model will be its ability to predict "new" 
+    #     The performance of the model will be its ability to predict "new"
     #     tastes for a known user
     #   - User separation: the test set will contain users that the model has
     #     never encountered. The performance of the model will be its abiliy to
@@ -44,7 +44,7 @@ def split_dataset(ratings, user_fraction=.1):
     #   - Sample test_fraction * n_total users
     #   - Randomly select half of their listenings for the test set
     result = list(xf.sample_users(
-        ratings[['user', 'item', 'rating']], 
+        ratings[['user', 'item', 'rating']],
         partitions=1,
         size=int(n_users * user_fraction),
         method=xf.SampleFrac(.5)
@@ -57,25 +57,25 @@ def split_dataset(ratings, user_fraction=.1):
 
 def train_model(
         train,
-        n_factors=30, 
-        n_iterations=20, 
-        regularization=.1, 
+        n_factors=30,
+        n_iterations=20,
+        regularization=.1,
         save_training_loss=False,
         confidence_factor=40):
     """Train (and evaluate iterations if requested) model"""
 
     # Encapsulate the model into a TopN recommender
     model = Recommender.adapt(als.ImplicitMF(
-        n_factors, 
-        iterations=n_iterations, 
-        weight=confidence_factor, 
-        progress=tqdm, 
+        n_factors,
+        iterations=n_iterations,
+        weight=confidence_factor,
+        progress=tqdm,
         method='cg'
     ))
 
     # Compute the confidence values for user-item pairs
     train['rating'] = 1 + confidence_factor * train['rating']
-    
+
     if save_training_loss:
         loss = np.zeros(n_iterations)
 
@@ -86,19 +86,19 @@ def train_model(
     else:
         model.fit(train)
         loss = None
-    
+
     return model, loss
-    
+
 
 def generate_predictions(model, user_item):
     """Generate the rating predictions for each user->item pair
-    
+
     :returns: pd.DataFrame. A dataframe with at least the columns 'user', 
         'item', 'prediction' (the predicted scores)
     """
 
     return batch.predict(model, user_item)
-     
+
 
 def generate_recommendations(model, test_ratings, n_recommendations=50):
     """Generate recommendations for a given model
@@ -111,7 +111,7 @@ def generate_recommendations(model, test_ratings, n_recommendations=50):
 
 def evaluate_model_recommendations(recommendations, test, metrics) -> pd.DataFrame:
     """Evaluates a model via its recommendations
-    
+
     :param recommendations: pd.DataFrame with at least the following columns :  
         'user', 'item', 'score', 'rank'
     :param test: pd.DataFrame. The testing data
@@ -138,7 +138,7 @@ def evaluate_model_loss(model, predictions):
     prediction = predictions['prediction'].to_numpy()
 
     reg = model.predictor.reg * (
-        np.linalg.norm(model.predictor.user_features_, 'fro') \
+        np.linalg.norm(model.predictor.user_features_, 'fro')
         + np.linalg.norm(model.predictor.item_features_, 'fro')
     )
 
@@ -157,7 +157,7 @@ def rank_to_weight(user_item, recommendations):
     :returns: the recommendations DataFrame with the column ['weight']
     """
 
-    n_r = recommendations['rank'].max() # n_recommendations
+    n_r = recommendations['rank'].max()  # n_recommendations
     users = recommendations.user.unique()
     n_users = users.shape[0]
 
@@ -168,7 +168,8 @@ def rank_to_weight(user_item, recommendations):
         # x.name is the id of the user
         return (2 * user_volume[x.name] / (n_r * (n_r - 1))) * (n_r - x)
 
-    recommendations['weight'] = recommendations.groupby('user')['rank'].transform(user_weights)
+    recommendations['weight'] = recommendations.groupby(
+        'user')['rank'].transform(user_weights)
 
     return recommendations
 
@@ -180,7 +181,7 @@ def wasserstein_1d(distribution: np.ndarray, other: np.ndarray) -> float:
     We assume that distribution a sorted in increasing index and have the same
     total weight
     """
-    
+
     work = w_sum = u_sum = r = 0
 
     i = j = 0
@@ -192,11 +193,11 @@ def wasserstein_1d(distribution: np.ndarray, other: np.ndarray) -> float:
 
             r = i
             i += 1
-        
+
         else:
             work += np.abs(w_sum - u_sum) * (j - r)
             u_sum += other[j]
-            
+
             r = j
             j += 1
 
@@ -236,7 +237,8 @@ if __name__ == '__main__':
     distribution = pd.Series({'rock': 3, 'pop': 10, 'jazz': 1})
     other = pd.Series({'rock': 10, 'pop': 1, 'jazz': 5})
 
-    other_unbalanced = pd.Series({'rock': 10, 'pop': 1, 'jazz': 5, 'metal': 10})
+    other_unbalanced = pd.Series(
+        {'rock': 10, 'pop': 1, 'jazz': 5, 'metal': 10})
 
     print(tags_distance(distribution, other, tags, p=2))
     print(tags_distance(distribution, other_unbalanced, tags, p=2))

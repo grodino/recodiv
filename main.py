@@ -10,14 +10,14 @@ from automation.msd_dataset import DeleteAllModelAnalysis
 
 @click.group()
 @click.option(
-    '--n-users', 
-    default=10_000, 
+    '--n-users',
+    default=10_000,
     type=int,
     help='Number of users to sample from the datasest'
 )
 @click.option(
-    '--local-scheduler', 
-    default=False, 
+    '--local-scheduler',
+    default=False,
     type=bool,
     help='Use a luigi local scheduler for the tasks execution'
 )
@@ -47,7 +47,8 @@ def report_figures(context):
 
     tasks = paper_figures(n_users, name)
 
-    luigi.build(tasks, local_scheduler=local_scheduler, log_level='INFO', scheduler_host='127.0.0.1')
+    luigi.build(tasks, local_scheduler=local_scheduler,
+                log_level='INFO', scheduler_host='127.0.0.1')
 
 
 @cli.command()
@@ -66,7 +67,8 @@ def clean_models(context):
         print(f'\t{file}')
 
     input('ARE YOU SURE YOU WANT TO DELETE THE FILES ? Press Enter to continue')
-    luigi.build([task], local_scheduler=local_scheduler, log_level='INFO', scheduler_host='127.0.0.1')
+    luigi.build([task], local_scheduler=local_scheduler,
+                log_level='INFO', scheduler_host='127.0.0.1')
 
 
 @cli.command()
@@ -85,14 +87,15 @@ def clear_figures(context):
         print(f'\t{file}')
 
     input('ARE YOU SURE YOU WANT TO DELETE THE FILES ? Press Enter to continue')
-    luigi.build([task], local_scheduler=local_scheduler, log_level='INFO', scheduler_host='127.0.0.1')
+    luigi.build([task], local_scheduler=local_scheduler,
+                log_level='INFO', scheduler_host='127.0.0.1')
 
 
 @cli.group()
 @click.option(
-    '--animated', 
+    '--animated',
     type=click.Choice(['latent-factors', 'reco-volume']),
-    default='reco-volume', 
+    default='reco-volume',
     help='Choose the variable to change during the animation'
 )
 @click.option(
@@ -106,7 +109,7 @@ def interactive(context: click.Context, animated: str, alpha: float):
     """Lauch the interactive graphs server"""
     context.ensure_object(dict)
 
-     # Avoid issues where 0.0 and 0 lead to different file titles
+    # Avoid issues where 0.0 and 0 lead to different file titles
     alpha = float(alpha)
     alpha = int(alpha) if alpha.is_integer() else alpha
 
@@ -121,12 +124,12 @@ def recommendation_diversity(context):
     local_scheduler = context.obj['local_scheduler']
     name = context.obj['name']
     animated = context.obj['animated']
-    
+
     msd_dataset = MsdDataset(name, n_users=n_users)
 
     if animated == 'latent-factors':
         reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler)
-    
+
     elif animated == 'reco-volume':
         reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler)
 
@@ -143,10 +146,12 @@ def diversity_increase(context):
     msd_dataset = MsdDataset(name, n_users=n_users)
 
     if animated == 'latent-factors':
-        div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler, alpha)
-    
+        div_increase_vs_user_div_vs_latent_factors(
+            msd_dataset, local_scheduler, alpha)
+
     elif animated == 'reco-volume':
-        div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler, alpha)
+        div_increase_vs_user_div_vs_reco_volume(
+            msd_dataset, local_scheduler, alpha)
 
 
 if __name__ == '__main__':

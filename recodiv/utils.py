@@ -43,7 +43,7 @@ def print_song_info(songs_ids, graph, songs_info):
         print()
 
 
-def generate_graph(user_item: pd.DataFrame, item_tag: Optional[pd.DataFrame]=None, graph=None) -> IndividualHerfindahlDiversities:
+def generate_graph(user_item: pd.DataFrame, item_tag: Optional[pd.DataFrame] = None, graph=None) -> IndividualHerfindahlDiversities:
     """Generate a graph from user -> item and item -> tag links"""
 
     if graph is None:
@@ -59,7 +59,7 @@ def generate_graph(user_item: pd.DataFrame, item_tag: Optional[pd.DataFrame]=Non
     return graph
 
 
-def generate_recommendations_graph(recommendations: pd.DataFrame, item_tag: Optional[pd.DataFrame]=None) -> IndividualHerfindahlDiversities:
+def generate_recommendations_graph(recommendations: pd.DataFrame, item_tag: Optional[pd.DataFrame] = None) -> IndividualHerfindahlDiversities:
     """Generate the user-recommendations-tags graph"""
 
     n_recommendations = int(recommendations['rank'].max())
@@ -74,7 +74,7 @@ def linear_regression(data: pd.DataFrame, x: str, y: str) -> Tuple[float, float]
     """Return the coefficients of a 2D linear regression on data
 
     Find a, b such that y = a x + b
-    
+
     :param data: dataframe containing the data to fit
     :param x: the name of the column to use for the x variable
     :param y: the name of the column to use for the y variable
@@ -82,20 +82,21 @@ def linear_regression(data: pd.DataFrame, x: str, y: str) -> Tuple[float, float]
     :returns: the coefficients (a, b)
     """
 
-    reg = LinearRegression().fit(data[x].to_numpy().reshape(-1, 1), data[y].to_numpy())
-    
+    reg = LinearRegression().fit(
+        data[x].to_numpy().reshape(-1, 1), data[y].to_numpy())
+
     return reg.coef_[0], reg.intercept_
 
 
 def build_recommendations_listenings_graph(
-    listenings_graph: IndividualHerfindahlDiversities, 
-    user_item: pd.DataFrame, 
-    recommendations: pd.DataFrame) -> IndividualHerfindahlDiversities:
+        listenings_graph: IndividualHerfindahlDiversities,
+        user_item: pd.DataFrame,
+        recommendations: pd.DataFrame) -> IndividualHerfindahlDiversities:
     """Build the recommendations + listenings graph
 
     user_item is needed to access the user listening volume
     """
-    
+
     # Normalise the recommendations by the volume the user had prior to the
     # recommendations
     reco_user_item = rank_to_weight(user_item, recommendations)[['user', 'item', 'weight']] \
@@ -120,14 +121,16 @@ def dataset_info(graph):
     ]
     _, max_user_song_volume = max(user_song_volume, key=lambda x: x[1])
     _, min_user_song_volume = min(user_song_volume, key=lambda x: x[1])
-    mean_user_song_volume = sum(volume for _, volume in user_song_volume) / n_users
+    mean_user_song_volume = sum(
+        volume for _, volume in user_song_volume) / n_users
 
     song_tag_volume = [
         (song, len(tags.keys())) for song, tags in graph.graphs[1][2].items()
     ]
     _, max_song_tag_volume = max(song_tag_volume, key=lambda x: x[1])
     _, min_song_tag_volume = min(song_tag_volume, key=lambda x: x[1])
-    mean_song_tag_volume = sum(volume for _, volume in song_tag_volume) / n_songs
+    mean_song_tag_volume = sum(
+        volume for _, volume in song_tag_volume) / n_songs
 
     return {
         'n_users': n_users,
@@ -172,7 +175,8 @@ def plot_histogram(values, min_quantile=.1, max_quantile=.9, n_bins=100, ax=None
     else:
         fig = None
 
-    ax.hist(values[(min_value < values) & (values < max_value)], bins=n_bins, log=log, bottom=0)
+    ax.hist(values[(min_value < values) & (values < max_value)],
+            bins=n_bins, log=log, bottom=0)
     ax.axvline(mean, ls='--', color='pink')
     ax.text(mean + 1, 2, f'mean: {mean:.02f}', color='pink')
 

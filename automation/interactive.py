@@ -3,7 +3,7 @@ import json
 import luigi
 import dash
 from dash import dcc
-from dash import  html
+from dash import html
 from dash.dependencies import Input
 from dash.dependencies import Output
 import plotly.express as px
@@ -38,14 +38,14 @@ def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
     merged = data_task.run()
 
     fig = px.scatter(
-        merged, 
-        x='diversity', 
+        merged,
+        x='diversity',
         y='reco_diversity',
         hover_data=['user'],
         custom_data=['n_factors'],
         animation_frame='n_factors',
         animation_group='user',
-        color='volume', 
+        color='volume',
         color_continuous_scale=px.colors.sequential.Viridis,
         width=float('inf'),
         height=900,
@@ -79,7 +79,7 @@ def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
             ], style={'width': '50%'})
 
         ], style={'display': 'flex'}),
-        
+
         # Data container
         html.Div([
             dcc.Markdown("""
@@ -131,7 +131,7 @@ def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
                 'common_tags'
             ]
             user_info = {key: user_info[key] for key in keys}
-            
+
             listened_tags_fig = px.bar(
                 listened_tag_distribution,
                 title='Listened tags weight distribution',
@@ -147,11 +147,13 @@ def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
             )
             recommended_tags_fig.update_xaxes(range=[0, 30])
             recommended_tags_fig.update_layout(xaxis_tickangle=45)
-        
+
         else:
             user_info = {}
-            listened_tags_fig = px.bar(title='Listened tags weight distribution')
-            recommended_tags_fig = px.bar(title='Recommended tags weight distribution')
+            listened_tags_fig = px.bar(
+                title='Listened tags weight distribution')
+            recommended_tags_fig = px.bar(
+                title='Recommended tags weight distribution')
 
         return json.dumps(user_info, indent=2), listened_tags_fig, recommended_tags_fig
 
@@ -181,14 +183,14 @@ def div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=Fals
     merged = data_task.run()
 
     fig = px.scatter(
-        merged, 
-        x='diversity', 
+        merged,
+        x='diversity',
         y='diversity_increase',
         hover_data=['user'],
         custom_data=['n_factors'],
         animation_frame='n_factors',
         animation_group='user',
-        color='volume', 
+        color='volume',
         color_continuous_scale=px.colors.sequential.Viridis,
         width=float('inf'),
         height=900,
@@ -222,7 +224,7 @@ def div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=Fals
             ], style={'width': '50%'})
 
         ], style={'display': 'flex'}),
-        
+
         # Data container
         html.Div([
             dcc.Markdown("""
@@ -274,7 +276,7 @@ def div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=Fals
                 'common_tags'
             ]
             user_info = {key: user_info[key] for key in keys}
-            
+
             listened_tags_fig = px.bar(
                 listened_tag_distribution,
                 title='Listened tags weight distribution',
@@ -290,11 +292,13 @@ def div_increase_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=Fals
             )
             recommended_tags_fig.update_xaxes(range=[0, 30])
             recommended_tags_fig.update_layout(xaxis_tickangle=45)
-        
+
         else:
             user_info = {}
-            listened_tags_fig = px.bar(title='Listened tags weight distribution')
-            recommended_tags_fig = px.bar(title='Recommended tags weight distribution')
+            listened_tags_fig = px.bar(
+                title='Listened tags weight distribution')
+            recommended_tags_fig = px.bar(
+                title='Recommended tags weight distribution')
 
         return json.dumps(user_info, indent=2), listened_tags_fig, recommended_tags_fig
 
@@ -324,8 +328,8 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
     merged = data_task.run()
 
     fig = px.scatter(
-        merged, 
-        x='diversity', 
+        merged,
+        x='diversity',
         y='reco_diversity',
         hover_data=['user'],
         custom_data=['n_recommendations'],
@@ -333,7 +337,7 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
         animation_group='user',
         # marginal_x='histogram',
         # marginal_y='histogram',
-        color='volume', 
+        color='volume',
         color_continuous_scale=px.colors.sequential.Viridis,
         width=float('inf'),
         height=900,
@@ -349,7 +353,7 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
         tickvals=[1, 1.477, 2, 2.477, 3],
         ticktext=['10', '30', '100', '300', '1000'],
     ))
-    
+
     app = dash.Dash()
     app.layout = html.Div([
         # Graphs container
@@ -367,7 +371,7 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
             ], style={'width': '50%'})
 
         ], style={'display': 'flex'}),
-        
+
         # Data container
         html.Div([
             dcc.Markdown("""
@@ -419,7 +423,7 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
                 'common_tags'
             ]
             user_info = {key: user_info[key] for key in keys}
-            
+
             listened_tags_fig = px.bar(
                 listened_tag_distribution,
                 title='Listened tags weight distribution',
@@ -435,15 +439,17 @@ def reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False):
             )
             recommended_tags_fig.update_xaxes(range=[0, 30])
             recommended_tags_fig.update_layout(xaxis_tickangle=45)
-        
+
         else:
             user_info = {}
-            listened_tags_fig = px.bar(title='Listened tags weight distribution')
-            recommended_tags_fig = px.bar(title='Recommended tags weight distribution')
+            listened_tags_fig = px.bar(
+                title='Listened tags weight distribution')
+            recommended_tags_fig = px.bar(
+                title='Recommended tags weight distribution')
 
         return json.dumps(user_info, indent=2), listened_tags_fig, recommended_tags_fig
 
-    app.run_server(debug=True, use_reloader=False) 
+    app.run_server(debug=True, use_reloader=False)
 
 
 def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False, alpha=2):
@@ -470,8 +476,8 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False, 
     merged = data_task.run()
 
     fig = px.scatter(
-        merged, 
-        x='diversity', 
+        merged,
+        x='diversity',
         y='diversity_increase',
         hover_data=['user'],
         custom_data=['n_recommendations'],
@@ -479,7 +485,7 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False, 
         animation_group='user',
         # marginal_x='histogram',
         # marginal_y='histogram',
-        color='volume', 
+        color='volume',
         color_continuous_scale=px.colors.sequential.Viridis,
         width=float('inf'),
         height=900,
@@ -495,7 +501,7 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False, 
         tickvals=[1, 1.477, 2, 2.477, 3],
         ticktext=['10', '30', '100', '300', '1000'],
     ))
-    
+
     app = dash.Dash()
     app.layout = html.Div([
         # Graphs container
@@ -513,7 +519,7 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False, 
             ], style={'width': '50%'})
 
         ], style={'display': 'flex'}),
-        
+
         # Data container
         html.Div([
             dcc.Markdown("""
@@ -572,7 +578,7 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False, 
                 'common_tags'
             ]
             user_info = {key: user_info[key] for key in keys}
-            
+
             listened_tags_fig = px.bar(
                 listened_tag_distribution,
                 title='Listened tags weight distribution',
@@ -588,12 +594,14 @@ def div_increase_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler=False, 
             )
             recommended_tags_fig.update_xaxes(range=[0, 30])
             recommended_tags_fig.update_layout(xaxis_tickangle=45)
-        
+
         else:
             user_info = {}
-            listened_tags_fig = px.bar(title='Listened tags weight distribution')
-            recommended_tags_fig = px.bar(title='Recommended tags weight distribution')
+            listened_tags_fig = px.bar(
+                title='Listened tags weight distribution')
+            recommended_tags_fig = px.bar(
+                title='Recommended tags weight distribution')
 
         return json.dumps(user_info, indent=2), listened_tags_fig, recommended_tags_fig
 
-    app.run_server(debug=True, use_reloader=False) 
+    app.run_server(debug=True, use_reloader=False)

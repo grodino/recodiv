@@ -41,6 +41,8 @@ logger.setLevel(logging.DEBUG)
 ################################################################################
 # DATASETS DECLARATION                                                         #
 ################################################################################
+
+
 class Dataset():
     """Representation of a dataset
 
@@ -77,7 +79,7 @@ class MsdDataset(Dataset):
 
         self.user_item = None
         self.item_tag = None
-    
+
     def import_data(self):
         """Randomly select self.n_users (all if n_users == 0) and import all
            their listenings
@@ -136,9 +138,11 @@ class MsdDataset(Dataset):
             # Too slow when importing the whole dataset
             logger.debug(f'Removing songs not listened to')
             item_tag.set_index('item', inplace=True)
-            item_tag = item_tag.loc[user_item['item']].reset_index().drop_duplicates()
+            item_tag = item_tag.loc[user_item['item']
+                                    ].reset_index().drop_duplicates()
 
-        logger.debug(f'Finished importing dataset in {time.perf_counter() - t}')
+        logger.debug(
+            f'Finished importing dataset in {time.perf_counter() - t}')
 
         self.user_item = user_item
         self.item_tag = item_tag
@@ -149,6 +153,8 @@ class MsdDataset(Dataset):
 ################################################################################
 # DATASET ANALYSIS                                                             #
 ################################################################################
+
+
 class ImportDataset(luigi.Task):
     """Import a dataset from via its class (ex: MsdDataset)"""
 
@@ -169,16 +175,18 @@ class ImportDataset(luigi.Task):
     def run(self):
         for out in self.output().values():
             out.makedirs()
-        
+
         self.dataset.import_data()
 
-        self.dataset.user_item.to_csv(self.output()['user_item'].path, index=False)
-        self.dataset.item_tag.to_csv(self.output()['item_tag'].path, index=False)
-        
+        self.dataset.user_item.to_csv(
+            self.output()['user_item'].path, index=False)
+        self.dataset.item_tag.to_csv(
+            self.output()['item_tag'].path, index=False)
+
 
 class BuildDatasetGraph(luigi.Task):
     """Build users-songs-tags graph"""
-    
+
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
@@ -219,7 +227,7 @@ class DatasetInfo(luigi.Task):
     def output(self):
         return luigi.LocalTarget(
             self.dataset.data_folder.joinpath('info.json')
-        )        
+        )
 
     def run(self):
         graph_file = self.input()
@@ -273,7 +281,7 @@ class PlotUserVolumeHistogram(luigi.Task):
         return ComputeUserVolume(
             dataset=self.dataset
         )
-    
+
     def run(self):
         self.output().makedirs()
         user_volume = pd.read_csv(self.input().path)
@@ -285,9 +293,9 @@ class PlotUserVolumeHistogram(luigi.Task):
         ax.set_xlabel('User volume')
         ax.set_ylabel('User count')
         ax.set_title('Histogram of user volume')
-        
+
         figure.savefig(self.output().path, format='png', dpi=300)
-        
+
         del figure, ax, user_volume
 
 
@@ -317,13 +325,14 @@ class ComputeUsersDiversities(luigi.Task):
 
     def run(self):
         graph_file = self.input()
-        graph: IndividualHerfindahlDiversities = IndividualHerfindahlDiversities.recall(graph_file.path)
+        graph: IndividualHerfindahlDiversities = IndividualHerfindahlDiversities.recall(
+            graph_file.path)
 
         graph.normalise_all()
         diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
 
         pd.DataFrame({
-            'user': list(diversities.keys()), 
+            'user': list(diversities.keys()),
             'diversity': list(diversities.values())
         }).to_csv(self.output().path, index=False)
 
@@ -349,17 +358,18 @@ class PlotUsersDiversitiesHistogram(luigi.Task):
             dataset=self.dataset,
             alpha=self.alpha
         )
-    
+
     def run(self):
         self.output().makedirs()
         diversities = pd.read_csv(self.input().path)
 
-        fig, ax = plot_histogram(diversities['diversity'].to_numpy(), min_quantile=0)
+        fig, ax = plot_histogram(
+            diversities['diversity'].to_numpy(), min_quantile=0)
         ax.set_xlabel('Diversity index')
         ax.set_ylabel('User count')
         ax.set_title('Histogram of user diversity index')
         fig.savefig(self.output().path, format='png', dpi=300)
-        
+
         del fig, ax, diversities
 
 
@@ -395,7 +405,7 @@ class ComputeTagsDiversities(luigi.Task):
         diversities = graph.diversities((2, 1, 0), alpha=self.alpha)
 
         pd.DataFrame({
-            'tag': list(diversities.keys()), 
+            'tag': list(diversities.keys()),
             'diversity': list(diversities.values())
         }).to_csv(self.output().path, index=False)
 
@@ -421,17 +431,18 @@ class PlotTagsDiversitiesHistogram(luigi.Task):
             dataset=self.dataset,
             alpha=self.alpha
         )
-    
+
     def run(self):
         self.output().makedirs()
         diversities = pd.read_csv(self.input().path)
 
-        fig, ax = plot_histogram(diversities['diversity'].to_numpy(), min_quantile=0)
+        fig, ax = plot_histogram(
+            diversities['diversity'].to_numpy(), min_quantile=0)
         ax.set_xlabel('Diversity index')
         ax.set_ylabel('Tag count')
         ax.set_title('Histogram of tag diversity index')
         fig.savefig(self.output().path, format='png', dpi=300)
-        
+
         del fig, ax, diversities
 
 
@@ -454,15 +465,17 @@ class GenerateTrainTest(luigi.Task):
     def output(self):
         return {
             'train': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(f'train-{int((1 - self.user_fraction) * 100)}.csv'), 
+                self.dataset.data_folder.joinpath(
+                    f'train-{int((1 - self.user_fraction) * 100)}.csv'),
                 format=Nop
             ),
             'test': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(f'test-{int(self.user_fraction * 100)}.csv'), 
+                self.dataset.data_folder.joinpath(
+                    f'test-{int(self.user_fraction * 100)}.csv'),
                 format=Nop
             )
         }
-    
+
     def run(self):
         for out in self.output().values():
             out.makedirs()
@@ -491,7 +504,7 @@ class TrainTestInfo(luigi.Task):
             dataset=self.dataset,
             user_fraction=self.user_fraction
         )
-    
+
     def output(self):
         return luigi.LocalTarget(
             self.dataset.data_folder.joinpath('train_test_info.json')
@@ -521,7 +534,7 @@ class TrainTestInfo(luigi.Task):
 
 class BuildTrainTestGraphs(luigi.Task):
     """Build users-songs-tags graph for the train and test sets"""
-    
+
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
@@ -561,7 +574,7 @@ class BuildTrainTestGraphs(luigi.Task):
 
         train_graph = generate_graph(train_user_item, item_tag)
         test_graph = generate_graph(test_user_item, item_tag)
-        
+
         train_graph.persist(self.output()['train'].path)
         test_graph.persist(self.output()['test'].path)
 
@@ -595,10 +608,12 @@ class ComputeTrainTestUserDiversity(luigi.Task):
 
         return {
             'train': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(f'trainset_users_diversities{alpha}.csv')
+                self.dataset.data_folder.joinpath(
+                    f'trainset_users_diversities{alpha}.csv')
             ),
             'test': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(f'testset_users_diversities{alpha}.csv')
+                self.dataset.data_folder.joinpath(
+                    f'testset_users_diversities{alpha}.csv')
             ),
         }
 
@@ -611,18 +626,19 @@ class ComputeTrainTestUserDiversity(luigi.Task):
         )
 
         train_graph.normalise_all()
-        train_diversities = train_graph.diversities((0, 1, 2), alpha=self.alpha)
-        
+        train_diversities = train_graph.diversities(
+            (0, 1, 2), alpha=self.alpha)
+
         test_graph.normalise_all()
         test_diversities = test_graph.diversities((0, 1, 2), alpha=self.alpha)
 
         pd.DataFrame({
-            'user': list(train_diversities.keys()), 
+            'user': list(train_diversities.keys()),
             'diversity': list(train_diversities.values())
         }).to_csv(self.output()['train'].path, index=False)
 
         pd.DataFrame({
-            'user': list(test_diversities.keys()), 
+            'user': list(test_diversities.keys()),
             'diversity': list(test_diversities.values())
         }).to_csv(self.output()['test'].path, index=False)
 
@@ -657,25 +673,27 @@ class PlotTrainTestUsersDiversitiesHistogram(luigi.Task):
             user_fraction=self.user_fraction,
             alpha=self.alpha
         )
-    
+
     def run(self):
         self.output()['train_tex'].makedirs()
 
         train_diversities = pd.read_csv(self.input()['train'].path)
         test_diversities = pd.read_csv(self.input()['test'].path)
 
-        fig, ax = plot_histogram(train_diversities['diversity'].to_numpy(), min_quantile=0, max_quantile=1)
+        fig, ax = plot_histogram(
+            train_diversities['diversity'].to_numpy(), min_quantile=0, max_quantile=1)
         ax.set_xlabel('Diversity index')
         ax.set_ylabel('User count')
         fig.savefig(self.output()['train_png'].path, format='png', dpi=300)
         tikzplotlib.save(self.output()['train_tex'].path)
 
-        fig, ax = plot_histogram(test_diversities['diversity'].to_numpy(), min_quantile=0, max_quantile=1)
+        fig, ax = plot_histogram(
+            test_diversities['diversity'].to_numpy(), min_quantile=0, max_quantile=1)
         ax.set_xlabel('Diversity index')
         ax.set_ylabel('User count')
         fig.savefig(self.output()['test_png'].path, format='png', dpi=300)
         tikzplotlib.save(self.output()['test_tex'].path)
-        
+
         del fig, ax, train_diversities, test_diversities
 
 
@@ -716,8 +734,10 @@ class ComputeTrainTestUserTagsDistribution(luigi.Task):
     def run(self):
         self.output()['train'].makedirs()
 
-        train_graph = IndividualHerfindahlDiversities.recall(self.input()['train'].path)
-        test_graph = IndividualHerfindahlDiversities.recall(self.input()['test'].path)
+        train_graph = IndividualHerfindahlDiversities.recall(self.input()[
+                                                             'train'].path)
+        test_graph = IndividualHerfindahlDiversities.recall(self.input()[
+                                                            'test'].path)
 
         # Compute the bipartite projection of the user graph on the tags layer
         test_graph.normalise_all()
@@ -764,24 +784,27 @@ class PlotTrainTestUserTagsDistribution(luigi.Task):
             dataset=self.dataset,
             user_fraction=self.user_fraction,
             user=self.user
-        ) 
+        )
 
     def output(self):
         folder = self.dataset.data_folder.joinpath('user-info/figures')
 
         return {
             'train': luigi.LocalTarget(
-                folder.joinpath(f'train-user{self.user}-{self.n_tags}tags-distribution.png')
+                folder.joinpath(
+                    f'train-user{self.user}-{self.n_tags}tags-distribution.png')
             ),
             'test': luigi.LocalTarget(
-                folder.joinpath(f'test-user{self.user}-{self.n_tags}tags-distribution.png')
+                folder.joinpath(
+                    f'test-user{self.user}-{self.n_tags}tags-distribution.png')
             ),
         }
 
     def run(self):
         self.output()['train'].makedirs()
 
-        test_distribution: pd.Series = pd.read_csv(self.input()['test'].path, index_col=0)
+        test_distribution: pd.Series = pd.read_csv(
+            self.input()['test'].path, index_col=0)
         test_distribution[:self.n_tags].plot.bar(
             rot=50
         )
@@ -789,12 +812,12 @@ class PlotTrainTestUserTagsDistribution(luigi.Task):
 
         pl.clf()
 
-        train_distribution: pd.Series = pd.read_csv(self.input()['train'].path, index_col=0)
+        train_distribution: pd.Series = pd.read_csv(
+            self.input()['train'].path, index_col=0)
         train_distribution[:self.n_tags].plot.bar(
             rot=50
         )
         pl.savefig(self.output()['train'].path, format='png', dpi=300)
-        
 
 
 ################################################################################
@@ -802,7 +825,7 @@ class PlotTrainTestUserTagsDistribution(luigi.Task):
 ################################################################################
 class TrainModel(luigi.Task):
     """Train a given model and save it"""
-    
+
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
@@ -819,7 +842,7 @@ class TrainModel(luigi.Task):
     confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -830,7 +853,7 @@ class TrainModel(luigi.Task):
 
     def requires(self):
         return GenerateTrainTest(
-            dataset=self.dataset, 
+            dataset=self.dataset,
             user_fraction=self.user_fraction
         )
 
@@ -840,14 +863,14 @@ class TrainModel(luigi.Task):
         )
 
         out = {'model': luigi.LocalTarget(model.joinpath('model.bpk'))}
-        
+
         if self.save_training_loss == True:
             out['train_loss'] = luigi.LocalTarget(
                 model.joinpath(f'train_loss.csv')
             )
 
         return out
-    
+
     def run(self):
         for out in self.output().values():
             out.makedirs()
@@ -859,10 +882,10 @@ class TrainModel(luigi.Task):
 
         model, loss = train_model(
             train,
-            n_factors=self.n_factors, 
-            n_iterations=self.n_iterations, 
+            n_factors=self.n_factors,
+            n_iterations=self.n_iterations,
             confidence_factor=self.confidence_factor,
-            regularization=self.regularization, 
+            regularization=self.regularization,
             save_training_loss=self.save_training_loss
         )
 
@@ -899,7 +922,7 @@ class PlotTrainLoss(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -917,7 +940,7 @@ class PlotTrainLoss(luigi.Task):
 
     def output(self):
         model = Path(self.input()['model'].path).parent
-        
+
         return {
             'png': luigi.LocalTarget(model.joinpath('training-loss.png'), format=Nop),
             'latex': luigi.LocalTarget(model.joinpath('training-loss.tex'), format=Nop)
@@ -925,7 +948,7 @@ class PlotTrainLoss(luigi.Task):
 
     def run(self):
         loss = pd.read_csv(self.input()['train_loss'].path)
-        
+
         iterations = loss['iteration'].to_numpy()
         loss = loss['train_loss'].to_numpy()
 
@@ -957,7 +980,7 @@ class GenerateRecommendations(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -974,8 +997,8 @@ class GenerateRecommendations(luigi.Task):
             ),
             'model': TrainModel(
                 dataset=self.dataset,
-                n_iterations=self.model_n_iterations, 
-                n_factors=self.model_n_factors, 
+                n_iterations=self.model_n_iterations,
+                n_factors=self.model_n_factors,
                 regularization=self.model_regularization,
                 user_fraction=self.model_user_fraction,
                 save_training_loss=False,
@@ -985,14 +1008,14 @@ class GenerateRecommendations(luigi.Task):
 
     def output(self):
         model = Path(self.input()['model']['model'].path).parent
-        
+
         return luigi.LocalTarget(
             model.joinpath(f'recommendations-{self.n_recommendations}.csv')
         )
-    
+
     def run(self):
         self.output().makedirs()
-        
+
         model = binpickle.load(self.input()['model']['model'].path)
         ratings = pd.read_csv(self.input()['data']['test'].path)
 
@@ -1024,7 +1047,7 @@ class GeneratePredictions(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1041,8 +1064,8 @@ class GeneratePredictions(luigi.Task):
             ),
             'model': TrainModel(
                 dataset=self.dataset,
-                n_iterations=self.model_n_iterations, 
-                n_factors=self.model_n_factors, 
+                n_iterations=self.model_n_iterations,
+                n_factors=self.model_n_factors,
                 regularization=self.model_regularization,
                 user_fraction=self.model_user_fraction,
                 save_training_loss=False,
@@ -1052,32 +1075,33 @@ class GeneratePredictions(luigi.Task):
 
     def output(self):
         model = Path(self.input()['model']['model'].path).parent
-        
+
         out = {}
-        out['test'] = luigi.LocalTarget(model.joinpath(f'test-predictions.csv'))
-        
+        out['test'] = luigi.LocalTarget(
+            model.joinpath(f'test-predictions.csv'))
+
         if self.train_predictions:
             out['train'] = luigi.LocalTarget(
                 model.joinpath(f'train-predictions.csv')
             )
 
         return out
-    
+
     def run(self):
         self.output()['test'].makedirs()
-        
+
         test_user_item = pd.read_csv(self.input()['data']['test'].path)
         model = binpickle.load(self.input()['model']['model'].path)
 
         generate_predictions(
-            model, 
+            model,
             test_user_item,
         ).to_csv(self.output()['test'].path, index=False)
 
         if self.train_predictions:
             train_user_item = pd.read_csv(self.input()['data']['train'].path)
             generate_predictions(
-                model, 
+                model,
                 train_user_item,
             ).to_csv(self.output()['train'].path, index=False)
 
@@ -1105,7 +1129,7 @@ class EvaluateUserRecommendations(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1130,15 +1154,16 @@ class EvaluateUserRecommendations(luigi.Task):
                 user_fraction=self.model_user_fraction
             )
         }
-    
+
     def output(self):
         model = Path(self.input()['recommendations'].path).parent
-        
+
         return luigi.LocalTarget(
-            model.joinpath(f'users_eval_{self.n_recommendations}-recommendations.csv'),
+            model.joinpath(
+                f'users_eval_{self.n_recommendations}-recommendations.csv'),
             format=Nop
         )
-    
+
     def run(self):
         self.output().makedirs()
 
@@ -1154,7 +1179,7 @@ class EvaluateUserRecommendations(luigi.Task):
         # # discard users with no recommendations from the test set
         # recommendations.set_index('user', inplace=True)
         # test.set_index('user', inplace=True)
-        
+
         # missing = test.index.difference(recommendations.index)
         # common = test.index.intersection(recommendations.index).unique()
         # print(f'In test set but not recommended : {missing}')
@@ -1165,10 +1190,10 @@ class EvaluateUserRecommendations(luigi.Task):
         metrics_names = ['ndcg', 'precision', 'recip_rank', 'recall']
         metrics = evaluate_model_recommendations(
             recommendations,
-            test, 
+            test,
             metrics_names
         )[metrics_names].reset_index()
-        
+
         metrics.to_csv(self.output().path, index=False)
 
         del recommendations, test, metrics
@@ -1193,7 +1218,7 @@ class PlotUserEvaluationHistogram(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1215,9 +1240,10 @@ class PlotUserEvaluationHistogram(luigi.Task):
 
     def output(self):
         model = Path(self.input().path).parent.joinpath('figures/')
-        
+
         return luigi.LocalTarget(
-            model.joinpath(f'users_eval_{self.n_recommendations}-recommendations_histogram.png'),
+            model.joinpath(
+                f'users_eval_{self.n_recommendations}-recommendations_histogram.png'),
             format=Nop
         )
 
@@ -1226,7 +1252,8 @@ class PlotUserEvaluationHistogram(luigi.Task):
 
         metrics = pd.read_csv(self.input().path)
 
-        fig, ax = plot_histogram(metrics['ndcg'].to_numpy(), min_quantile=0, max_quantile=0.99)
+        fig, ax = plot_histogram(
+            metrics['ndcg'].to_numpy(), min_quantile=0, max_quantile=0.99)
         ax.set_xlabel('NDCG value')
         ax.set_ylabel('User count')
         fig.savefig(self.output().path, format='png', dpi=300)
@@ -1251,7 +1278,7 @@ class EvaluateModel(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1264,8 +1291,8 @@ class EvaluateModel(luigi.Task):
         return {
             'model': TrainModel(
                 dataset=self.dataset,
-                n_iterations=self.model_n_iterations, 
-                n_factors=self.model_n_factors, 
+                n_iterations=self.model_n_iterations,
+                n_factors=self.model_n_factors,
                 regularization=self.model_regularization,
                 user_fraction=self.model_user_fraction,
                 save_training_loss=False,
@@ -1280,7 +1307,7 @@ class EvaluateModel(luigi.Task):
                 train_predictions=True,
                 model_confidence_factor=self.model_confidence_factor
             ),
-            'user_eval' : EvaluateUserRecommendations(
+            'user_eval': EvaluateUserRecommendations(
                 dataset=self.dataset,
                 model_n_iterations=self.model_n_iterations,
                 model_n_factors=self.model_n_factors,
@@ -1290,20 +1317,23 @@ class EvaluateModel(luigi.Task):
                 n_recommendations=self.n_recommendations
             )
         }
-    
+
     def output(self):
         model = Path(self.input()['model']['model'].path).parent
-        
+
         return luigi.LocalTarget(
-            model.joinpath(f'{self.n_recommendations}-recommendations_model_eval.json'),
+            model.joinpath(
+                f'{self.n_recommendations}-recommendations_model_eval.json'),
             format=Nop
         )
-    
+
     def run(self):
         self.output().makedirs()
 
-        test_predictions = pd.read_csv(self.input()['predictions']['test'].path)
-        train_predictions = pd.read_csv(self.input()['predictions']['train'].path)
+        test_predictions = pd.read_csv(
+            self.input()['predictions']['test'].path)
+        train_predictions = pd.read_csv(
+            self.input()['predictions']['train'].path)
 
         model = binpickle.load(self.input()['model']['model'].path)
 
@@ -1313,7 +1343,7 @@ class EvaluateModel(luigi.Task):
 
         metrics['test_loss'] = evaluate_model_loss(model, test_predictions)
         metrics['train_loss'] = evaluate_model_loss(model, train_predictions)
-        
+
         metrics.to_json(
             self.output().path,
             orient='index',
@@ -1325,7 +1355,7 @@ class EvaluateModel(luigi.Task):
 
 class TuneModelHyperparameters(luigi.Task):
     """Evaluate a model on a hyperparameter grid and get the best combination
-    
+
     The best combination is defined as the one that yelds the best NDCG
     """
 
@@ -1354,11 +1384,12 @@ class TuneModelHyperparameters(luigi.Task):
     )
 
     def requires(self):
-        grid = np.meshgrid(self.model_n_factors_values, self.model_regularization_values)
+        grid = np.meshgrid(self.model_n_factors_values,
+                           self.model_regularization_values)
         # Transform np.meshgrid into list od tuples, with each tuple
         # representing a set of parameters to train the model against
         self.hyperparameters = list(zip(*map(lambda x: x.flatten(), grid)))
-        
+
         required = {}
 
         for n_factors, regularization in self.hyperparameters:
@@ -1371,14 +1402,15 @@ class TuneModelHyperparameters(luigi.Task):
                 n_recommendations=self.n_recommendations,
                 model_confidence_factor=self.model_confidence_factor
             )
-        
+
         return required
-    
+
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
-        
+
         return luigi.LocalTarget(
-            aggregated.joinpath(f'{self.model_n_factors_values}factors_{self.model_regularization_values}reg_{self.n_recommendations}reco_{self.model_confidence_factor}c_model_eval.json'),
+            aggregated.joinpath(
+                f'{self.model_n_factors_values}factors_{self.model_regularization_values}reg_{self.n_recommendations}reco_{self.model_confidence_factor}c_model_eval.json'),
             format=Nop
         )
 
@@ -1387,7 +1419,8 @@ class TuneModelHyperparameters(luigi.Task):
         metrics = pd.DataFrame()
 
         for (n_factors, regularization), metrics_file in self.input().items():
-            metric = pd.read_json(metrics_file.path, orient='index').transpose()
+            metric = pd.read_json(
+                metrics_file.path, orient='index').transpose()
             metric['n_factors'] = n_factors
             metric['regularization'] = regularization
 
@@ -1396,10 +1429,11 @@ class TuneModelHyperparameters(luigi.Task):
         metrics.set_index(['n_factors', 'regularization'], inplace=True)
         optimal = {}
 
-        opt_n_factors, opt_regularization = metrics.index[metrics['ndcg'].argmax()]
+        opt_n_factors, opt_regularization = metrics.index[metrics['ndcg'].argmax(
+        )]
         optimal['n_factors'] = float(opt_n_factors)
         optimal['regularization'] = float(opt_regularization)
-        
+
         with open(self.output().path, 'w') as file:
             json.dump(optimal, file, indent=4)
 
@@ -1442,11 +1476,12 @@ class PlotModelTuning(luigi.Task):
     )
 
     def requires(self):
-        grid = np.meshgrid(self.model_n_factors_values, self.model_regularization_values)
+        grid = np.meshgrid(self.model_n_factors_values,
+                           self.model_regularization_values)
         # Transform np.meshgrid into list od tuples, with each tuple
         # representing a set of parameters to train the model against
         self.hyperparameters = list(zip(*map(lambda x: x.flatten(), grid)))
-        
+
         required = {}
 
         for n_factors, regularization in self.hyperparameters:
@@ -1458,29 +1493,30 @@ class PlotModelTuning(luigi.Task):
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             )
-        
+
         return required
-    
+
     def output(self):
-        aggregated = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
-        
+        aggregated = self.dataset.base_folder.joinpath(
+            'aggregated').joinpath('figures')
+
         return {
             'png': luigi.LocalTarget(
                 aggregated.joinpath(
-                    f'{self.model_n_factors_values}' \
-                        + f'factors_{self.model_regularization_values}' \
-                        + f'reg_{self.n_recommendations}' \
-                        + f'reco_{self.model_confidence_factor}' \
-                        + f'c_model_eval_{self.tuning_metric}.png'),
+                    f'{self.model_n_factors_values}'
+                    + f'factors_{self.model_regularization_values}'
+                    + f'reg_{self.n_recommendations}'
+                    + f'reco_{self.model_confidence_factor}'
+                    + f'c_model_eval_{self.tuning_metric}.png'),
                 format=Nop
             ),
             'latex': luigi.LocalTarget(
                 aggregated.joinpath(
-                    f'{self.model_n_factors_values}' \
-                        + f'factors_{self.model_regularization_values}' \
-                        + f'reg_{self.n_recommendations}' \
-                        + f'reco_{self.model_confidence_factor}' \
-                        + f'c_model_eval_{self.tuning_metric}.tex'),
+                    f'{self.model_n_factors_values}'
+                    + f'factors_{self.model_regularization_values}'
+                    + f'reg_{self.n_recommendations}'
+                    + f'reco_{self.model_confidence_factor}'
+                    + f'c_model_eval_{self.tuning_metric}.tex'),
                 format=Nop
             )
         }
@@ -1490,13 +1526,15 @@ class PlotModelTuning(luigi.Task):
         metrics = pd.DataFrame()
 
         for (n_factors, regularization), metrics_file in self.input().items():
-            metric = pd.read_json(metrics_file.path, orient='index').transpose()
+            metric = pd.read_json(
+                metrics_file.path, orient='index').transpose()
             metric['n_factors'] = n_factors
             metric['regularization'] = regularization
 
             metrics = pd.concat((metrics, metric))
 
-        metrics_matrix = metrics.pivot(index='n_factors', columns='regularization')[self.tuning_metric]
+        metrics_matrix = metrics.pivot(index='n_factors', columns='regularization')[
+            self.tuning_metric]
         metrics_matrix_n = metrics_matrix.to_numpy()
 
         fig, ax = pl.subplots()
@@ -1506,19 +1544,23 @@ class PlotModelTuning(luigi.Task):
 
         # Create the color bar
         cbar = fig.colorbar(img)
-        cbar.ax.set_ylabel(self.tuning_metric.replace("_", " "), rotation=-90, va="bottom")
+        cbar.ax.set_ylabel(self.tuning_metric.replace(
+            "_", " "), rotation=-90, va="bottom")
 
         # Set the x and y axis values
         ax.set_xticks(list(range(len(metrics_matrix.columns))))
-        ax.set_xticklabels([f'{value:.0e}' for value in metrics_matrix.columns])
+        ax.set_xticklabels(
+            [f'{value:.0e}' for value in metrics_matrix.columns])
 
         ax.set_yticks(list(range(len(metrics_matrix.index))))
         ax.set_yticklabels(list(metrics_matrix.index))
 
-        ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
-        pl.setp(ax.get_xticklabels(), rotation=-40, rotation_mode="anchor", ha="right")
+        ax.tick_params(top=True, bottom=False,
+                       labeltop=True, labelbottom=False)
+        pl.setp(ax.get_xticklabels(), rotation=-40,
+                rotation_mode="anchor", ha="right")
 
-        # Annotate the best value        
+        # Annotate the best value
         if self.tuning_best == 'min':
             opt_n_factors, opt_regularization = np.unravel_index(
                 metrics_matrix_n.flatten().argmin(),
@@ -1536,10 +1578,10 @@ class PlotModelTuning(luigi.Task):
 
         ax.text(
             opt_regularization,
-            opt_n_factors, 
-            opt_text, 
-            ha="center", 
-            va="center", 
+            opt_n_factors,
+            opt_text,
+            ha="center",
+            va="center",
             color=opt_color
         )
 
@@ -1550,7 +1592,7 @@ class PlotModelTuning(luigi.Task):
         tikzplotlib.save(self.output()['latex'].path)
 
         pl.clf()
-        
+
         del fig, ax, metrics, metrics_matrix
 
 
@@ -1573,7 +1615,7 @@ class PlotModelEvaluationVsLatentFactors(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1598,29 +1640,30 @@ class PlotModelEvaluationVsLatentFactors(luigi.Task):
         return req
 
     def output(self):
-        aggregated = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+        aggregated = self.dataset.base_folder.joinpath(
+            'aggregated').joinpath('figures')
 
         return luigi.LocalTarget(
             aggregated.joinpath(
-                f'{self.model_n_factors_values}' \
-                    + f'factors_{self.model_regularization}' \
-                    + f'reg_{self.n_recommendations}' \
-                    + f'reco_{self.model_confidence_factor}' \
-                    + f'model_eval.png'),
+                f'{self.model_n_factors_values}'
+                + f'factors_{self.model_regularization}'
+                + f'reg_{self.n_recommendations}'
+                + f'reco_{self.model_confidence_factor}'
+                + f'model_eval.png'),
             format=Nop
         )
-    
+
     def run(self):
         self.output().makedirs()
 
         data: pd.DataFrame = pd.DataFrame(
-            index=self.model_n_factors_values, 
+            index=self.model_n_factors_values,
             columns=['NDCG', 'precision']
         )
 
         for n_factors in self.model_n_factors_values:
             metric = pd.read_json(
-                self.input()[n_factors].path, 
+                self.input()[n_factors].path,
                 orient='index'
             ).transpose()
 
@@ -1631,8 +1674,9 @@ class PlotModelEvaluationVsLatentFactors(luigi.Task):
 
         data = data.subtract(data.min())
         data = data.divide(data.max())
-        
-        data.plot(xlabel="number of factors", ylabel="metric (scaled and centered)", logx=True)
+
+        data.plot(xlabel="number of factors",
+                  ylabel="metric (scaled and centered)", logx=True)
         pl.savefig(self.output().path, format='png', dpi=300)
 
 
@@ -1658,7 +1702,7 @@ class BuildRecommendationGraph(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1682,9 +1726,10 @@ class BuildRecommendationGraph(luigi.Task):
 
     def output(self):
         model = Path(self.input()['recommendations'].path).parent
-        
+
         return luigi.LocalTarget(
-            model.joinpath(f'recommendations-{self.n_recommendations}-graph.pk'),
+            model.joinpath(
+                f'recommendations-{self.n_recommendations}-graph.pk'),
             format=Nop
         )
 
@@ -1692,8 +1737,9 @@ class BuildRecommendationGraph(luigi.Task):
         self.output().makedirs()
 
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
-        recommendations: pd.DataFrame = pd.read_csv(self.input()['recommendations'].path)
-        
+        recommendations: pd.DataFrame = pd.read_csv(
+            self.input()['recommendations'].path)
+
         graph = generate_recommendations_graph(recommendations, item_tag)
         graph.persist(self.output().path)
 
@@ -1719,7 +1765,7 @@ class ComputeRecommendationDiversities(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1746,7 +1792,8 @@ class ComputeRecommendationDiversities(luigi.Task):
         alpha = int(alpha) if alpha.is_integer() else alpha
 
         return luigi.LocalTarget(
-            model.joinpath(f'recommendations-{self.n_recommendations}-users_diversities{alpha}.csv')
+            model.joinpath(
+                f'recommendations-{self.n_recommendations}-users_diversities{alpha}.csv')
         )
 
     def run(self):
@@ -1756,7 +1803,7 @@ class ComputeRecommendationDiversities(luigi.Task):
         diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
 
         pd.DataFrame({
-            'user': list(diversities.keys()), 
+            'user': list(diversities.keys()),
             'diversity': list(diversities.values())
         }).to_csv(self.output().path, index=False)
 
@@ -1782,7 +1829,7 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1801,24 +1848,25 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
             model_user_fraction=self.model_user_fraction,
             n_recommendations=self.n_recommendations
         )
-    
+
     def output(self):
         figures = Path(self.input().path).parent.joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
             f'{self.n_recommendations}-recommendation_user_diversity{self.alpha}_histogram.png'
         ))
-  
+
     def run(self):
         self.output().makedirs()
 
         diversities = pd.read_csv(self.input().path)
-        fig, ax = plot_histogram(diversities['diversity'].to_numpy(), min_quantile=0, max_quantile=1)
-        
+        fig, ax = plot_histogram(
+            diversities['diversity'].to_numpy(), min_quantile=0, max_quantile=1)
+
         ax.set_xlabel('Diversity index')
         ax.set_ylabel('User count')
         ax.set_title('Histogram of recommendations diversity index')
         pl.savefig(self.output().path, format='png', dpi=300)
-        
+
         del fig, ax, diversities
 
 
@@ -1843,7 +1891,7 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -1853,7 +1901,7 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
     )
 
     bounds = luigi.parameter.ListParameter(
-        default=None, 
+        default=None,
         description=(
             "The bounding box of the graph supplied as (x_min, x_max, y_min,"
             "y_max). If a value is None, leaves matplotlib default"
@@ -1883,7 +1931,8 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         }
 
     def output(self):
-        figures = Path(self.input()['recommendation_diversity'].path).parent.joinpath('figures')
+        figures = Path(
+            self.input()['recommendation_diversity'].path).parent.joinpath('figures')
         return {
             'png': luigi.LocalTarget(figures.joinpath(
                 f'{self.n_recommendations}-recommendations_diversity{self.alpha}_vs_original_diversity.png'
@@ -1909,9 +1958,11 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         merged: pd.DataFrame = reco_diversities.merge(diversities, on='user')
         merged = merged.merge(volume, on='user')
 
-        up_bound = min(merged['diversity'].max(), merged['reco_diversity'].max())
-        low_bound = max(merged['diversity'].min(), merged['reco_diversity'].min())
-        
+        up_bound = min(merged['diversity'].max(),
+                       merged['reco_diversity'].max())
+        low_bound = max(merged['diversity'].min(),
+                        merged['reco_diversity'].min())
+
         _, ax = pl.subplots()
         ax.plot([low_bound, up_bound], [low_bound, up_bound], '--', c='purple')
 
@@ -1919,11 +1970,11 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
             self.bounds = [None, None, None, None]
 
         merged.plot.scatter(
-            ax= ax,
-            x='diversity', 
-            y='reco_diversity', 
-            marker='+', 
-            c='volume', 
+            ax=ax,
+            x='diversity',
+            y='reco_diversity',
+            marker='+',
+            c='volume',
             colormap='viridis',
             norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
             xlim=self.bounds[:2],
@@ -1933,19 +1984,21 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         pl.ylabel('recommendation diversity')
 
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
-        
+
         with open(self.output()['latex'].path, 'w') as file:
             code: str = tikzplotlib.get_tikz_code(
-                extra_axis_parameters=['clip mode=individual','clip marker paths=true']
+                extra_axis_parameters=[
+                    'clip mode=individual', 'clip marker paths=true']
             )
-            
+
             code = code.replace('ytick={1,10,100,1000}', 'ytick={0,1,2,3}')
-            code = code.replace('meta=colordata', 'meta expr=lg10(\\thisrow{colordata})')
+            code = code.replace(
+                'meta=colordata', 'meta expr=lg10(\\thisrow{colordata})')
             code = code.replace('point meta', '% point meta')
             code = code.replace('semithick', 'very thick')
-            
+
             file.write(code)
-            
+
         pl.clf()
 
         del diversities, reco_diversities, merged
@@ -1970,7 +2023,7 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2001,9 +2054,10 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
 
     def output(self):
         model = Path(self.input()['recommendations'].path).parent
-        
+
         return luigi.LocalTarget(
-            model.joinpath(f'listenings-recommendations-{self.n_recommendations}-graph.pk'),
+            model.joinpath(
+                f'listenings-recommendations-{self.n_recommendations}-graph.pk'),
             format=Nop
         )
 
@@ -2017,7 +2071,7 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
         # Used to compute the volume a user would have listened to if listening its music
         user_item = pd.read_csv(self.input()['train_test']['test'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
-     
+
         graph = build_recommendations_listenings_graph(
             graph,
             user_item,
@@ -2048,7 +2102,7 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2066,16 +2120,17 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
             model_user_fraction=self.model_user_fraction,
             n_recommendations=self.n_recommendations
         )
-        
+
     def output(self):
         model = Path(self.input().path).parent
-        
+
         # Avoid issues where 0.0 and 0 lead to different file titles
         alpha = float(self.alpha)
         alpha = int(alpha) if alpha.is_integer() else alpha
 
         return luigi.LocalTarget(
-            model.joinpath(f'listenings-recommendations-{self.n_recommendations}-users_diversities{alpha}.csv')
+            model.joinpath(
+                f'listenings-recommendations-{self.n_recommendations}-users_diversities{alpha}.csv')
         )
 
     def run(self):
@@ -2086,7 +2141,7 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
         graph.normalise_all()
         diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
         diversities = pd.DataFrame({
-            'user': list(diversities.keys()), 
+            'user': list(diversities.keys()),
             'diversity': list(diversities.values())
         })
 
@@ -2115,7 +2170,7 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2136,11 +2191,11 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
                 n_recommendations=self.n_recommendations
             ),
             'original': ComputeTrainTestUserDiversity(
-                dataset=self.dataset, 
+                dataset=self.dataset,
                 alpha=self.alpha,
             )
         }
-        
+
     def output(self):
         model = Path(self.input()['with_recommendations'].path).parent
 
@@ -2149,7 +2204,8 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
         alpha = int(alpha) if alpha.is_integer() else alpha
 
         return luigi.LocalTarget(
-            model.joinpath(f'listenings-recommendations-{self.n_recommendations}-users_diversities{alpha}_increase.csv')
+            model.joinpath(
+                f'listenings-recommendations-{self.n_recommendations}-users_diversities{alpha}_increase.csv')
         )
 
     def run(self):
@@ -2186,7 +2242,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2217,21 +2273,21 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
             )),
         }
 
-    
     def run(self):
         self.output()['png'].makedirs()
         deltas: pd.DataFrame = pd.read_csv(self.input().path)
 
-        fig, ax = plot_histogram(deltas['diversity'].to_numpy(), min_quantile=0, max_quantile=1, log=True)
+        fig, ax = plot_histogram(deltas['diversity'].to_numpy(
+        ), min_quantile=0, max_quantile=1, log=True)
 
         ax.set_xlabel('diversity increase')
         ax.set_ylabel('user count')
-        
+
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
         # pl.savefig(self.output()['pdf'].path, backend='pgf')
 
         tikzplotlib.save(self.output()['latex'].path)
-        
+
         del ax, deltas
 
 
@@ -2255,7 +2311,7 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2265,7 +2321,7 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
     )
 
     bounds = luigi.parameter.ListParameter(
-        default=None, 
+        default=None,
         description=(
             "The bounding box of the graph supplied as (x_min, x_max, y_min,"
             "y_max). If a value is None, leaves matplotlib default"
@@ -2303,7 +2359,8 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         }
 
     def output(self):
-        figures = Path(self.input()['diversity_increase'].path).parent.joinpath('figures')
+        figures = Path(
+            self.input()['diversity_increase'].path).parent.joinpath('figures')
         return {
             'png': luigi.LocalTarget(figures.joinpath(
                 f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_vs_original_diversity.png'
@@ -2316,7 +2373,8 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
     def run(self):
         self.output()['png'].makedirs()
         diversities = pd.read_csv(self.input()['user_diversity']['train'].path)
-        increase = pd.read_csv(self.input()['diversity_increase'].path).rename(columns={'diversity': 'increase'})
+        increase = pd.read_csv(self.input()['diversity_increase'].path).rename(
+            columns={'diversity': 'increase'})
 
         # compute user volume
         user_item = pd.read_csv(self.input()['dataset']['train'].path)
@@ -2327,7 +2385,7 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         merged = increase.merge(diversities, on='user')
         merged = merged.merge(volume, on='user')
         merged = merged[merged['increase'] != 0]
-        
+
         if self.bounds == None:
             self.bounds = [None, None, None, None]
 
@@ -2335,12 +2393,12 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         x = merged[(self.bounds[0] < merged['diversity']) & (merged['diversity'] < self.bounds[1])]['diversity'] \
             .sort_values().to_numpy()
         y = a * x + b
-        
+
         ax: pl.Axes = merged.plot.scatter(
-            x='diversity', 
-            y='increase', 
-            marker='+', 
-            c='volume', 
+            x='diversity',
+            y='increase',
+            marker='+',
+            c='volume',
             colormap='viridis',
             norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
             xlim=self.bounds[:2],
@@ -2354,10 +2412,10 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         for i, user in enumerate(self.users):
             merged[merged['user'] == user].plot(
                 ax=ax,
-                x='diversity', 
-                y='increase', 
+                x='diversity',
+                y='increase',
                 marker=markers[i],
-                markeredgewidth=1, 
+                markeredgewidth=1,
                 # markeredgecolor='yellow',
                 c='red'
             )
@@ -2370,18 +2428,21 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
 
         with open(self.output()['latex'].path, 'w') as file:
             code: str = tikzplotlib.get_tikz_code(
-                extra_axis_parameters=['clip mode=individual', 'clip marker paths=true']
+                extra_axis_parameters=[
+                    'clip mode=individual', 'clip marker paths=true']
             )
-            
+
             code = code.replace('ytick={1,10,100,1000}', 'ytick={0,1,2,3}')
-            code = code.replace('meta=colordata', 'meta expr=lg10(\\thisrow{colordata})')
+            code = code.replace(
+                'meta=colordata', 'meta expr=lg10(\\thisrow{colordata})')
             code = code.replace('point meta', '% point meta')
             code = code.replace('semithick', 'very thick')
             code = code.replace('colorbar,', 'colorbar horizontal,')
             code = code.replace('ytick={0,1,2,3}', 'xtick={0,1,2,3}')
             code = code.replace('yticklabels', 'xticklabels')
-            code = code.replace('ylabel={volume}', 'xlabel={volume},xticklabel pos=upper,at={(0,1.2)},anchor=north west')
-            
+            code = code.replace(
+                'ylabel={volume}', 'xlabel={volume},xticklabel pos=upper,at={(0,1.2)},anchor=north west')
+
             file.write(code)
 
         pl.clf()
@@ -2412,7 +2473,7 @@ class ComputeUserRecommendationsTagsDistribution(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2436,7 +2497,8 @@ class ComputeUserRecommendationsTagsDistribution(luigi.Task):
         folder = model.joinpath('user-info')
 
         return luigi.LocalTarget(
-            folder.joinpath(f'{self.n_recommendations}reco-user{self.user}-tags-distribution.csv')
+            folder.joinpath(
+                f'{self.n_recommendations}reco-user{self.user}-tags-distribution.csv')
         )
 
     def run(self):
@@ -2478,7 +2540,7 @@ class ComputeUserListenedRecommendedTagsDistribution(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2502,7 +2564,8 @@ class ComputeUserListenedRecommendedTagsDistribution(luigi.Task):
         folder = model.joinpath('user-info')
 
         return luigi.LocalTarget(
-            folder.joinpath(f'listening-{self.n_recommendations}reco-user{self.user}-tags-distribution.csv')
+            folder.joinpath(
+                f'listening-{self.n_recommendations}reco-user{self.user}-tags-distribution.csv')
         )
 
     def run(self):
@@ -2541,7 +2604,7 @@ class PlotUserRecommendationsTagsDistribution(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2567,15 +2630,16 @@ class PlotUserRecommendationsTagsDistribution(luigi.Task):
             model_regularization=self.model_regularization,
             model_user_fraction=self.model_user_fraction,
             n_recommendations=self.n_recommendations
-        ) 
+        )
 
     def output(self):
         folder = Path(self.input().path).parent.joinpath('figures')
 
         return luigi.LocalTarget(
-            folder.joinpath(f'{self.n_recommendations}reco-user{self.user}-tags-distribution.png')
+            folder.joinpath(
+                f'{self.n_recommendations}reco-user{self.user}-tags-distribution.png')
         )
-        
+
     def run(self):
         self.output().makedirs()
 
@@ -2605,7 +2669,7 @@ class PlotUserListeningRecommendationsTagsDistributions(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2641,12 +2705,14 @@ class PlotUserListeningRecommendationsTagsDistributions(luigi.Task):
         }
 
     def output(self):
-        folder = Path(self.input()['recommended_tags'].path).parent.joinpath('figures')
+        folder = Path(
+            self.input()['recommended_tags'].path).parent.joinpath('figures')
 
         return luigi.LocalTarget(
-            folder.joinpath(f'{self.n_recommendations}reco-listened-user{self.user}-tags-distribution.png')
+            folder.joinpath(
+                f'{self.n_recommendations}reco-listened-user{self.user}-tags-distribution.png')
         )
-        
+
     def run(self):
         self.output().makedirs()
 
@@ -2663,14 +2729,16 @@ class PlotUserListeningRecommendationsTagsDistributions(luigi.Task):
 
         heaviest_tags = pd.merge(
             listened_distribution[:self.n_tags],
-            reco_distribution[:self.n_tags], 
+            reco_distribution[:self.n_tags],
             on='tag',
             how='outer'
         )
 
         ax = heaviest_tags.plot.bar(x='tag', logy=True)
-        pl.setp(ax.get_xticklabels(), rotation=-40, rotation_mode="anchor", ha="left")
-        pl.title(f'{self.n_recommendations} reco, {self.model_n_factors} factors, {self.model_regularization} regularization')
+        pl.setp(ax.get_xticklabels(), rotation=-40,
+                rotation_mode="anchor", ha="left")
+        pl.title(
+            f'{self.n_recommendations} reco, {self.model_n_factors} factors, {self.model_regularization} regularization')
 
         pl.savefig(self.output().path, format='png', dpi=300)
 
@@ -2693,7 +2761,7 @@ class ComputeHeaviestTagRank(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2722,14 +2790,17 @@ class ComputeHeaviestTagRank(luigi.Task):
         model = Path(self.input()['recommendation_graph'].path).parent
 
         return luigi.LocalTarget(
-            model.joinpath(f'{self.n_recommendations}reco-user-heaviest-tag-reco-rank.csv')
+            model.joinpath(
+                f'{self.n_recommendations}reco-user-heaviest-tag-reco-rank.csv')
         )
 
     def run(self):
         self.output().makedirs()
 
-        listened_graph = IndividualHerfindahlDiversities.recall(self.input()['train_test_graph']['train'].path)
-        recommended_graph = IndividualHerfindahlDiversities.recall(self.input()['recommendation_graph'].path)
+        listened_graph = IndividualHerfindahlDiversities.recall(
+            self.input()['train_test_graph']['train'].path)
+        recommended_graph = IndividualHerfindahlDiversities.recall(
+            self.input()['recommendation_graph'].path)
 
         # Compute the bipartite projection of the user graph on the tags layer
         listened_graph.normalise_all()
@@ -2742,18 +2813,19 @@ class ComputeHeaviestTagRank(luigi.Task):
         heaviest_reco_tag = {}
 
         for user, distrib in recommended_distributions.items():
-            heaviest_reco_tag[user] = max(distrib.items(), key=lambda item: item[1])[0]
+            heaviest_reco_tag[user] = max(
+                distrib.items(), key=lambda item: item[1])[0]
 
         # Copute the rank of this tag in the user's listenings
         heaviest_tag_rank = {}
 
         for user in recommended_distributions.keys():
             tag_distribution = sorted(
-                listened_distributions[user].items(), 
-                key=lambda item: item[1], 
+                listened_distributions[user].items(),
+                key=lambda item: item[1],
                 reverse=True
             )
-            
+
             # look for the heaviest recommended tag
             for i, (tag, _) in enumerate(tag_distribution):
                 if tag == heaviest_reco_tag[user]:
@@ -2788,7 +2860,7 @@ class PlotHeaviestTagRankVsPercentageIncreased(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2827,11 +2899,12 @@ class PlotHeaviestTagRankVsPercentageIncreased(luigi.Task):
         figures = model.joinpath('figures')
 
         return luigi.LocalTarget(
-            figures.joinpath(f'{self.n_recommendations}reco-heaviest-tag-reco-rank-vs-increase{self.alpha}.png')
+            figures.joinpath(
+                f'{self.n_recommendations}reco-heaviest-tag-reco-rank-vs-increase{self.alpha}.png')
         )
 
     def run(self):
-        tag_rank = pd.read_csv(self.input()['tag_rank'].path) 
+        tag_rank = pd.read_csv(self.input()['tag_rank'].path)
         increase: pd.DataFrame = pd.read_csv(self.input()['increase'].path)
 
         merged = pd.merge(tag_rank, increase, on='user')
@@ -2842,8 +2915,8 @@ class PlotHeaviestTagRankVsPercentageIncreased(luigi.Task):
         decreased_mean_rank = decreased['rank'].mean()
 
         ax = merged.plot.scatter(
-            x='diversity', 
-            y='rank', 
+            x='diversity',
+            y='rank',
             marker='+',
             logy=True,
             ylim=(9e-1, 1e3),
@@ -2854,7 +2927,7 @@ class PlotHeaviestTagRankVsPercentageIncreased(luigi.Task):
             f'increased mean rank : {increased_mean_rank}\ndecreased mean rank : {decreased_mean_rank}',
             horizontalalignment='left',
             verticalalignment='top',
-            transform = ax.transAxes,
+            transform=ax.transAxes,
         )
 
         pl.xlabel('Diversity increase')
@@ -2888,7 +2961,7 @@ class PlotUserTagHistograms(luigi.Task):
     model_confidence_factor = luigi.parameter.FloatParameter(
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -2942,17 +3015,20 @@ class PlotUserTagHistograms(luigi.Task):
         }
 
     def output(self):
-        folder = Path(self.input()['recommended_tags'].path).parent.joinpath('figures')
+        folder = Path(
+            self.input()['recommended_tags'].path).parent.joinpath('figures')
 
         return {
             'png': luigi.LocalTarget(
-                folder.joinpath(f'increase{self.alpha}-{self.n_recommendations}reco-user{self.user}-tag-histograms.png')
+                folder.joinpath(
+                    f'increase{self.alpha}-{self.n_recommendations}reco-user{self.user}-tag-histograms.png')
             ),
             'latex': luigi.LocalTarget(
-                folder.joinpath(f'increase{self.alpha}-{self.n_recommendations}reco-user{self.user}-tag-histograms.tex')
+                folder.joinpath(
+                    f'increase{self.alpha}-{self.n_recommendations}reco-user{self.user}-tag-histograms.tex')
             ),
         }
-        
+
     def run(self):
         self.output()['png'].makedirs()
 
@@ -2979,7 +3055,7 @@ class PlotUserTagHistograms(luigi.Task):
 
         heaviest_tags = pd.merge(
             listened_distribution,
-            reco_distribution, 
+            reco_distribution,
             on='tag',
             how='outer'
         )
@@ -2992,7 +3068,8 @@ class PlotUserTagHistograms(luigi.Task):
             how='left'
         )
         heaviest_tags_after_reco = after_reco_distribution[:len(heaviest_tags)]
-        heaviest_tags_after_reco['afterreco'] = -heaviest_tags_after_reco['afterreco']
+        heaviest_tags_after_reco['afterreco'] = - \
+            heaviest_tags_after_reco['afterreco']
 
         increase: pd.DataFrame = pd.read_csv(self.input()['increase'].path)
 
@@ -3003,22 +3080,22 @@ class PlotUserTagHistograms(luigi.Task):
 
         width = .8
         fig, axes = pl.subplots(1, 1)
-        
+
         # Plot the listened and recommended tags distributions
         ax = heaviest_tags.plot.bar(
-            x='tag', 
-            # logy=True, 
+            x='tag',
+            # logy=True,
             # ax=axes[0],
             ax=axes,
             title='',
             xlabel='',
             width=width,
         )
-        
+
         # Plot the recommended+listened tags distribution
         ax = heaviest_tags_after_reco.plot.bar(
-            x='tag', 
-            y='afterreco', 
+            x='tag',
+            y='afterreco',
             ax=ax,
             color=color,
             title='',
@@ -3033,42 +3110,50 @@ class PlotUserTagHistograms(luigi.Task):
 
         # Inset plot to show the whole recommended+listened tags distribution
         axins = inset_axes(ax, width=3, height=1, loc=1)
-        axins.tick_params(labelleft=False, labelbottom=False, bottom=False, left=False)
+        axins.tick_params(labelleft=False, labelbottom=False,
+                          bottom=False, left=False)
 
-        after_reco_distribution['afterreco'] = after_reco_distribution['afterreco'].abs()
+        after_reco_distribution['afterreco'] = after_reco_distribution['afterreco'].abs(
+        )
         # after_reco_distribution[:50].plot.bar(
         after_reco_distribution[:40].plot.bar(
-            ax=axins, 
-            x='tag', 
-            y='afterreco', 
-            color=color, 
+            ax=axins,
+            x='tag',
+            y='afterreco',
+            color=color,
             xlabel='',
             ylabel='',
         )
         axins.get_legend().remove()
 
         # Nice tags display
-        ax.tick_params(top=False, bottom=True, labeltop=False, labelbottom=True)
-        pl.setp(ax.get_xticklabels(), rotation=90, rotation_mode="anchor", ha="right")
+        ax.tick_params(top=False, bottom=True,
+                       labeltop=False, labelbottom=True)
+        pl.setp(ax.get_xticklabels(), rotation=90,
+                rotation_mode="anchor", ha="right")
 
         y_ticks = ax.get_yticks()
         ax.set_yticklabels([f'{abs(y_tick):.02f}' for y_tick in y_ticks])
 
         x_ticks = ax.get_xticks()
-        ax.plot([x_ticks[0] - width/2, x_ticks[-1] + width/2], [0, 0], '--', c='0.01')
+        ax.plot([x_ticks[0] - width/2, x_ticks[-1] + width/2],
+                [0, 0], '--', c='0.01')
 
         fig.subplots_adjust(bottom=0.2)
         pl.savefig(self.output()['png'].path, format='png', dpi=300)
 
         inset = 'at={(insetPosition)},anchor={outer north east},\nwidth=2in,height=1.25in,'
         inset_coord = '\coordinate (insetPosition) at (rel axis cs:0.95,0.95);'
-    
+
         with open(self.output()['latex'].path, 'w') as file:
             code = tikzplotlib.get_tikz_code(
-                extra_axis_parameters=['scaled ticks=false', 'tick label style={/pgf/number format/fixed}']
+                extra_axis_parameters=[
+                    'scaled ticks=false', 'tick label style={/pgf/number format/fixed}']
             )
-            code = code.replace('xmajorticks=false,', 'xmajorticks=false,\n' + inset)
-            code = code.replace('\\addlegendentry{listened}', '\\addlegendentry{listened}\n' + inset_coord)
+            code = code.replace('xmajorticks=false,',
+                                'xmajorticks=false,\n' + inset)
+            code = code.replace(
+                '\\addlegendentry{listened}', '\\addlegendentry{listened}\n' + inset_coord)
 
             file.write(code)
 
@@ -3093,7 +3178,7 @@ class MetricsSummary(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -3119,7 +3204,7 @@ class MetricsSummary(luigi.Task):
                 alpha=alpha
             )
 
-            for n_recommendations in self.n_recommendations_values:            
+            for n_recommendations in self.n_recommendations_values:
                 req[f'reco{n_recommendations}_div{alpha}'] = ComputeRecommendationDiversities(
                     dataset=self.dataset,
                     alpha=alpha,
@@ -3130,7 +3215,7 @@ class MetricsSummary(luigi.Task):
                     n_recommendations=n_recommendations
                 )
                 req[f'reco{n_recommendations}_div{alpha}_increase'] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
-                     dataset=self.dataset,
+                    dataset=self.dataset,
                     alpha=alpha,
                     model_n_iterations=self.model_n_iterations,
                     model_n_factors=self.model_n_factors,
@@ -3138,21 +3223,23 @@ class MetricsSummary(luigi.Task):
                     model_user_fraction=self.model_user_fraction,
                     n_recommendations=n_recommendations
                 )
-        
+
         return req
 
     def output(self):
         folder = self.dataset.base_folder.joinpath('aggregated')
 
         return luigi.LocalTarget(
-            folder.joinpath(f'summary-{self.n_recommendations_values}reco-{self.alpha_values}div-{self.model_regularization}reg-{self.model_n_factors}factors.csv')
+            folder.joinpath(
+                f'summary-{self.n_recommendations_values}reco-{self.alpha_values}div-{self.model_regularization}reg-{self.model_n_factors}factors.csv')
         )
 
     def run(self):
         self.output().makedirs()
 
         # Compute the volume for each user in test
-        user_item: pd.DataFrame = pd.read_csv(self.input()['train_test']['test'].path)
+        user_item: pd.DataFrame = pd.read_csv(
+            self.input()['train_test']['test'].path)
         volume = user_item[['user', 'rating']].groupby('user') \
             .sum() \
             .rename(columns={'rating': 'volume'})['volume']
@@ -3161,9 +3248,11 @@ class MetricsSummary(luigi.Task):
         organic_diversities = []
 
         for alpha in self.alpha_values:
-            organic_diversity: pd.DataFrame = pd.read_csv(self.input()[f'train_test_div{alpha}']['train'].path)
+            organic_diversity: pd.DataFrame = pd.read_csv(
+                self.input()[f'train_test_div{alpha}']['train'].path)
             organic_diversities.append(
-                organic_diversity.set_index('user')['diversity'].rename(f'train_diversity{alpha}')
+                organic_diversity.set_index('user')['diversity'].rename(
+                    f'train_diversity{alpha}')
             )
 
         # Compute the recommendation diversity for each user
@@ -3171,9 +3260,11 @@ class MetricsSummary(luigi.Task):
 
         for alpha in self.alpha_values:
             for n_recommendations in self.n_recommendations_values:
-                reco_diversity: pd.DataFrame = pd.read_csv(self.input()[f'reco{n_recommendations}_div{alpha}'].path)
+                reco_diversity: pd.DataFrame = pd.read_csv(
+                    self.input()[f'reco{n_recommendations}_div{alpha}'].path)
                 reco_diversities.append(
-                    reco_diversity.set_index('user')['diversity'].rename(f'reco{n_recommendations}_div{alpha}')
+                    reco_diversity.set_index('user')['diversity'].rename(
+                        f'reco{n_recommendations}_div{alpha}')
                 )
 
         # Compute the diversity increase for each user
@@ -3181,14 +3272,16 @@ class MetricsSummary(luigi.Task):
 
         for alpha in self.alpha_values:
             for n_recommendations in self.n_recommendations_values:
-                increase: pd.DataFrame = pd.read_csv(self.input()[f'reco{n_recommendations}_div{alpha}_increase'].path)
+                increase: pd.DataFrame = pd.read_csv(
+                    self.input()[f'reco{n_recommendations}_div{alpha}_increase'].path)
                 increases.append(
-                    increase.set_index('user')['diversity'].rename(f'reco{n_recommendations}_div{alpha}_increase')
+                    increase.set_index('user')['diversity'].rename(
+                        f'reco{n_recommendations}_div{alpha}_increase')
                 )
 
         columns = [volume] + organic_diversities + reco_diversities + increases
         summary = pd.DataFrame(index=volume.index)
-        
+
         for col in columns:
             summary[col.name] = col
 
@@ -3218,7 +3311,7 @@ class ComputeRecommendationDiversityVsLatentFactors(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -3233,14 +3326,14 @@ class ComputeRecommendationDiversityVsLatentFactors(luigi.Task):
         tasks['dataset'] = ImportDataset(dataset=self.dataset)
 
         for n_factors in self.n_factors_values:
-                tasks[n_factors] = GenerateRecommendations(
-                    dataset=self.dataset,
-                    model_n_iterations=self.model_n_iterations,
-                    model_n_factors=n_factors,
-                    model_regularization=self.model_regularization,
-                    model_user_fraction=self.model_user_fraction,
-                    n_recommendations= max(self.n_recommendations_values)
-                )
+            tasks[n_factors] = GenerateRecommendations(
+                dataset=self.dataset,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=max(self.n_recommendations_values)
+            )
 
         return tasks
 
@@ -3253,19 +3346,21 @@ class ComputeRecommendationDiversityVsLatentFactors(luigi.Task):
     def run(self):
         self.output().makedirs()
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
-        
 
         data = pd.DataFrame(
-            index=self.n_factors_values, 
-            columns=[f'{n_recommendations} recommendations' for n_recommendations in self.n_recommendations_values]
+            index=self.n_factors_values,
+            columns=[
+                f'{n_recommendations} recommendations' for n_recommendations in self.n_recommendations_values]
         )
 
         for n_factors in self.n_factors_values:
-            recommendations: pd.DataFrame = pd.read_csv(self.input()[n_factors].path)
-            
+            recommendations: pd.DataFrame = pd.read_csv(
+                self.input()[n_factors].path)
+
             for n_recommendations in self.n_recommendations_values:
                 graph = generate_recommendations_graph(
-                    recommendations[recommendations['rank'] <= n_recommendations], 
+                    recommendations[recommendations['rank']
+                                    <= n_recommendations],
                     item_tag
                 )
 
@@ -3298,7 +3393,7 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -3333,7 +3428,8 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
         return req
 
     def output(self):
-        figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+        figures = self.dataset.base_folder.joinpath(
+            'aggregated').joinpath('figures')
         return {
             'png': luigi.LocalTarget(figures.joinpath(
                 f'{self.n_recommendations_values}recommendations_diversity{self.alpha}_vs_{self.n_factors_values}factors_{self.model_regularization}reg.png'
@@ -3345,14 +3441,15 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
 
     def run(self):
         self.output()['png'].makedirs()
-        data: pd.DataFrame = pd.read_csv(self.input()['diversity'].path, index_col=0)
+        data: pd.DataFrame = pd.read_csv(
+            self.input()['diversity'].path, index_col=0)
 
-        data = data[1:].set_index('n_factors')       
+        data = data[1:].set_index('n_factors')
         data['ndcg'] = 0
 
         for n_factors in self.n_factors_values[1:]:
             metric = pd.read_json(
-                self.input()[n_factors].path, 
+                self.input()[n_factors].path,
                 orient='index'
             ).transpose()
             data.loc[n_factors, 'ndcg'] = metric['ndcg'][0]
@@ -3361,14 +3458,14 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
         data = data.divide(data.max())
         data = data.reset_index()
 
-        _, ax = pl.subplots(1,1)
+        _, ax = pl.subplots(1, 1)
 
         data.plot(
             ax=ax,
             x='n_factors',
             y='ndcg',
-            xlabel='number of factors', 
-            ylabel='diversity (normalized)', 
+            xlabel='number of factors',
+            ylabel='diversity (normalized)',
             logx=True,
             style='--',
             linewidth='2',
@@ -3381,8 +3478,8 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
                 ax=ax,
                 x='n_factors',
                 y=f'{n_reco} recommendations',
-                xlabel='number of factors', 
-                ylabel='diversity (normalized)', 
+                xlabel='number of factors',
+                ylabel='diversity (normalized)',
                 logx=True,
                 style='-',
                 linewidth='1',
@@ -3415,7 +3512,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -3449,7 +3546,8 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
         return tasks
 
     def output(self):
-        figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+        figures = self.dataset.base_folder.joinpath(
+            'aggregated').joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
             f'{self.n_recommendations}recommendations_diversity{self.alpha}_increase_vs_{self.n_factors_values}factors_{self.model_regularization}reg.png'
         ))
@@ -3467,7 +3565,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
 
                 factors.append(key[0])
                 mean_deltas.append(deltas['diversity'].mean())
-            
+
             elif key[1] == 'metrics':
                 metric = pd.read_json(value.path, orient='index').transpose()
                 metric['n_factors'] = key[0]
@@ -3476,17 +3574,19 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
         metrics.set_index('n_factors', inplace=True)
         # metrics = metrics / metrics.loc[metrics.index[0]]
 
-        fig, ax1 = pl.subplots()        
+        fig, ax1 = pl.subplots()
 
         # Add plots
-        div_line = ax1.semilogx(factors, mean_deltas, color='green', label='diversity')
+        div_line = ax1.semilogx(factors, mean_deltas,
+                                color='green', label='diversity')
         ax1.set_xlabel('number of factors')
         ax1.set_ylabel('mean diversity increase')
 
         ax2 = ax1.twinx()
         ax2.set_ylabel('metrics')
-        metrics_lines = metrics['ndcg'].plot(ax=ax2, legend=False, logy=True).get_lines()
-        
+        metrics_lines = metrics['ndcg'].plot(
+            ax=ax2, legend=False, logy=True).get_lines()
+
         # Obscure trick to have only one legend
         lines = [*div_line, ]
 
@@ -3522,7 +3622,7 @@ class PlotDiversityVsRegularization(luigi.Task):
     model_regularization_values = luigi.parameter.ListParameter(
         description='List of regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -3556,7 +3656,8 @@ class PlotDiversityVsRegularization(luigi.Task):
         return tasks
 
     def output(self):
-        figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+        figures = self.dataset.base_folder.joinpath(
+            'aggregated').joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
             f'{self.n_recommendations}reco-recommendations_diversity{self.alpha}_vs_{self.model_regularization_values}reg-{self.model_n_factors}f.png'
         ))
@@ -3574,26 +3675,28 @@ class PlotDiversityVsRegularization(luigi.Task):
 
                 regularization.append(key[0])
                 mean_diversities.append(diversities['diversity'].mean())
-            
+
             elif key[1] == 'metrics':
                 metric = pd.read_json(value.path, orient='index').transpose()
                 metric['regularization'] = key[0]
                 metrics = pd.concat((metrics, metric))
-        
+
         metrics.set_index('regularization', inplace=True)
         metrics = metrics / metrics.loc[metrics.index[0]]
 
-        fig, ax1 = pl.subplots()        
+        fig, ax1 = pl.subplots()
 
         # Add plots
-        div_line = ax1.semilogx(regularization, mean_diversities, color='green', label='diversity')
+        div_line = ax1.semilogx(
+            regularization, mean_diversities, color='green', label='diversity')
         ax1.set_xlabel('Regularization coefficient')
         ax1.set_ylabel('mean diversity')
 
         ax2 = ax1.twinx()
         ax2.set_ylabel('metrics')
-        metrics_lines = metrics['ndcg'].plot(ax=ax2, legend=False, logy=True).get_lines()
-        
+        metrics_lines = metrics['ndcg'].plot(
+            ax=ax2, legend=False, logy=True).get_lines()
+
         # Obscure trick to have only one legend
         lines = [*div_line, ]
 
@@ -3629,7 +3732,7 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
     model_regularization_values = luigi.parameter.ListParameter(
         description='List of regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -3663,7 +3766,8 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
         return tasks
 
     def output(self):
-        figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+        figures = self.dataset.base_folder.joinpath(
+            'aggregated').joinpath('figures')
         return luigi.LocalTarget(figures.joinpath(
             f'{self.n_recommendations}recommendations_diversity{self.alpha}_increase_vs_{self.model_regularization_values}reg_{self.model_n_factors}f.png'
         ))
@@ -3681,26 +3785,28 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
 
                 regularization.append(key[0])
                 mean_deltas.append(diversities['diversity'].mean())
-            
+
             elif key[1] == 'metrics':
                 metric = pd.read_json(value.path, orient='index').transpose()
                 metric['regularization'] = key[0]
                 metrics = pd.concat((metrics, metric))
-        
+
         metrics.set_index('regularization', inplace=True)
         metrics = metrics / metrics.loc[metrics.index[0]]
 
-        fig, ax1 = pl.subplots()        
+        fig, ax1 = pl.subplots()
 
         # Add plots
-        div_line = ax1.semilogx(regularization, mean_deltas, color='green', label='diversity')
+        div_line = ax1.semilogx(
+            regularization, mean_deltas, color='green', label='diversity')
         ax1.set_xlabel('Regularization coefficient')
         ax1.set_ylabel('mean diversity increase')
 
         ax2 = ax1.twinx()
         ax2.set_ylabel('metrics')
-        metrics_lines = metrics['ndcg'].plot(ax=ax2, legend=False, logy=True).get_lines()
-        
+        metrics_lines = metrics['ndcg'].plot(
+            ax=ax2, legend=False, logy=True).get_lines()
+
         # Obscure trick to have only one legend
         lines = [*div_line, ]
 
@@ -3736,7 +3842,7 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -3763,7 +3869,7 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
         return luigi.LocalTarget(model.joinpath(
             f'recommendations_diversity{self.alpha}_vs_{self.n_recommendations_values}reco.csv'
         ))
-    
+
     def run(self):
         self.output().makedirs()
         recommendations = pd.read_csv(self.input()['recommendations'].path) \
@@ -3772,16 +3878,16 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
         # To compute the user volume in the rank to weight conversion
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         mean_diversities = []
-        
+
         for n_recommendations in self.n_recommendations_values:
             graph = generate_recommendations_graph(
-                recommendations[recommendations['rank'] <= n_recommendations], 
+                recommendations[recommendations['rank'] <= n_recommendations],
                 item_tag
             )
 
             graph.normalise_all()
             diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
-            
+
             mean_diversities.append(
                 sum(diversities.values()) / len(diversities)
             )
@@ -3814,7 +3920,7 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -3836,11 +3942,12 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations_values=self.n_recommendations_values
             )
-        
+
         return tasks
-    
+
     def output(self):
-        figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+        figures = self.dataset.base_folder.joinpath(
+            'aggregated').joinpath('figures')
         return {
             'png': luigi.LocalTarget(figures.joinpath(
                 f'recommendations_diversity{self.alpha}_vs_{self.n_recommendations_values}reco-{self.n_factors_values}factors.png'
@@ -3856,7 +3963,8 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
         for n_factors, file in self.input().items():
             data = pd.read_csv(file.path)
 
-            pl.semilogx(data['n_recommendations'], data['diversity'], label=f'{n_factors} factors')
+            pl.semilogx(data['n_recommendations'],
+                        data['diversity'], label=f'{n_factors} factors')
             # pl.plot(data['n_recommendations'], data['diversity'], label=f'{n_factors} factors')
 
         pl.xlabel('Number of recommendations per user')
@@ -3870,6 +3978,8 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
         del data
 
 # Deprecated
+
+
 class ComputeDiversityIncreaseVsRecommendationVolume(luigi.Task):
     """Compute the user diversity of recommendations against the number of
        recommendations made DEPRECATED"""
@@ -3890,7 +4000,7 @@ class ComputeDiversityIncreaseVsRecommendationVolume(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -3921,10 +4031,10 @@ class ComputeDiversityIncreaseVsRecommendationVolume(luigi.Task):
         return luigi.LocalTarget(aggregated.joinpath(
             f'diversity{self.alpha}-increase_vs_{self.n_recommendations_values}reco-{self.model_n_factors}factors.csv'
         ))
-    
+
     def run(self):
         self.output().makedirs()
-        
+
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path) \
             .rename(columns={'score': 'rating'})
@@ -3936,25 +4046,26 @@ class ComputeDiversityIncreaseVsRecommendationVolume(luigi.Task):
         # To compute the user volume in the rank to weight conversion
         user_item = pd.read_csv(self.input()['train_test']['test'].path)
         mean_diversities = []
-        
+
         for n_recommendations in self.n_recommendations_values:
-            recommendations = recommendations[recommendations['rank'] <= n_recommendations]
-     
+            recommendations = recommendations[recommendations['rank']
+                                              <= n_recommendations]
+
             # Normalise the recommendations by the volume the user had prior to the
             # recommendations
             user_reco = rank_to_weight(user_item, recommendations)[['user', 'item', 'weight']] \
-            .rename(columns={'weight': 'rating'})
-            
+                .rename(columns={'weight': 'rating'})
+
             graph_with_reco = generate_graph(user_reco, graph=graph)
             graph_with_reco.normalise_all()
             diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
-            
+
             mean_diversities.append(
                 sum(diversities.values()) / len(diversities)
             )
 
             del diversities
-        
+
         pd.DataFrame({
             'n_recommendations': self.n_recommendations_values,
             'increase': mean_diversities
@@ -3963,6 +4074,8 @@ class ComputeDiversityIncreaseVsRecommendationVolume(luigi.Task):
         del item_tag, recommendations
 
 # Deprecated
+
+
 class PlotDiversityIncreaseVsRecommendationVolume(luigi.Task):
     """Plot the user diversity of recommendations against the number of
        recommendations made"""
@@ -3983,7 +4096,7 @@ class PlotDiversityIncreaseVsRecommendationVolume(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -4005,11 +4118,12 @@ class PlotDiversityIncreaseVsRecommendationVolume(luigi.Task):
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations_values=self.n_recommendations_values
             )
-        
+
         return tasks
-    
+
     def output(self):
-        figures = self.dataset.base_folder.joinpath('aggregated').joinpath('figures')
+        figures = self.dataset.base_folder.joinpath(
+            'aggregated').joinpath('figures')
         return {
             'png': luigi.LocalTarget(figures.joinpath(
                 f'recommendations_diversity{self.alpha}-increase_vs_{self.n_recommendations_values}reco-{self.n_factors_values}factors.png'
@@ -4025,7 +4139,8 @@ class PlotDiversityIncreaseVsRecommendationVolume(luigi.Task):
         for n_factors, file in self.input().items():
             data = pd.read_csv(file.path)
 
-            pl.semilogx(data['n_recommendations'], data['increase'], label=f'{n_factors} factors')
+            pl.semilogx(data['n_recommendations'],
+                        data['increase'], label=f'{n_factors} factors')
             # pl.plot(data['n_recommendations'], data['diversity'], label=f'{n_factors} factors')
 
         pl.xlabel('Number of recommendations per user')
@@ -4042,10 +4157,10 @@ class PlotDiversityIncreaseVsRecommendationVolume(luigi.Task):
 class AnalyseUser(luigi.Task):
     """ Look at the items listened by a user, its diversity before and after 
         recommendation etc... """
-    
+
     user_id = luigi.parameter.Parameter(
         description='The id string of the user'
-    )    
+    )
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
@@ -4060,7 +4175,7 @@ class AnalyseUser(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -4073,11 +4188,11 @@ class AnalyseUser(luigi.Task):
         return {
             'dataset': ImportDataset(dataset=self.dataset),
             'train_test': GenerateTrainTest(
-                dataset=self.dataset, 
+                dataset=self.dataset,
                 user_fraction=self.model_user_fraction
             ),
             'train_test_graph': BuildTrainTestGraphs(
-                dataset=self.dataset, 
+                dataset=self.dataset,
                 user_fraction=self.model_user_fraction
             ),
             'recommendations': GenerateRecommendations(
@@ -4108,7 +4223,7 @@ class AnalyseUser(luigi.Task):
 
     def output(self):
         model = Path(self.input()['recommendations'].path).parent
-        return luigi.LocalTarget(model.joinpath(f'user_{self.user_id}-info.json')) 
+        return luigi.LocalTarget(model.joinpath(f'user_{self.user_id}-info.json'))
 
     def run(self):
         test = pd.read_csv(self.input()['train_test']['test'].path)
@@ -4142,7 +4257,8 @@ class AnalyseUser(luigi.Task):
         )
         print('N_TAGS', len(distribution))
         print('DIV manual', sum(1 for x in distribution.values() if x > 0))
-        print('DIVERSITY all', reco_listen_graph.diversities((0, 1, 2), alpha=0)[self.user_id])
+        print('DIVERSITY all', reco_listen_graph.diversities(
+            (0, 1, 2), alpha=0)[self.user_id])
         print('SUM', sum(distribution.values()))
         print(distribution)
 
@@ -4163,10 +4279,10 @@ class AnalyseUser(luigi.Task):
 
             for track_id in track_ids:
                 items[track_id] = {
-                    'artist': song_info[track_id][0], 
+                    'artist': song_info[track_id][0],
                     'title': song_info[track_id][1],
                 }
-            
+
             return items
 
         info = {
@@ -4188,25 +4304,28 @@ class AnalyseUser(luigi.Task):
         info['n_listened_tags'] = len(info['listened_tags'])
 
         # Recommended items
-        recommended_items = recommendations[recommendations['user'] == self.user_id]
+        recommended_items = recommendations[recommendations['user']
+                                            == self.user_id]
         info['recommended_items'] = track_id_to_dict(recommended_items['item'])
         info['n_recommended_items'] = len(info['recommended_items'])
 
         # Recommended tags
-        recommended_tags = recommended_items.merge(item_tag, how='left', on='item')
+        recommended_tags = recommended_items.merge(
+            item_tag, how='left', on='item')
         info['recommended_tags'] = list(recommended_tags.tag.unique())
         info['n_recommended_tags'] = len(info['recommended_tags'])
 
         # Intersection of recommended tags and listened tags
-        info['common_tags'] = list(np.intersect1d(recommended_tags.tag.unique(), tags.tag.unique()))
+        info['common_tags'] = list(np.intersect1d(
+            recommended_tags.tag.unique(), tags.tag.unique()))
         info['n_common_tags'] = len(info['common_tags'])
 
         with self.output().open('w') as file:
             json.dump(info, file, indent=4)
-        
+
         return info, listened_tag_distribution, recommended_tag_distribution
-        
-        
+
+
 ################################################################################
 # INTERACTIVE PLOTTING                                                         #
 ################################################################################
@@ -4231,7 +4350,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -4263,13 +4382,14 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             )
-        
+
         return req
 
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
         return luigi.LocalTarget(
-            aggregated.joinpath(f'{self.n_recommendations}reco-{self.model_n_factors_values}factors-users_diversities{self.alpha}.csv')
+            aggregated.joinpath(
+                f'{self.n_recommendations}reco-{self.model_n_factors_values}factors-users_diversities{self.alpha}.csv')
         )
 
     def run(self):
@@ -4280,7 +4400,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
         user_item = pd.read_csv(self.input()['train_test']['train'].path)
         volume = np.log10(user_item.groupby('user')['rating'].sum()) \
             .rename('volume')
-        
+
         # Get the diversity values for the different number of factors
         reco_diversities = []
 
@@ -4292,7 +4412,8 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
             divs['n_factors'] = n_factors
             reco_diversities.append(divs)
 
-        reco_diversities: pd.DataFrame = pd.concat(reco_diversities, ignore_index=True)
+        reco_diversities: pd.DataFrame = pd.concat(
+            reco_diversities, ignore_index=True)
 
         # inner join, only keep users for whom we calculated a recommendation diversity value
         merged = reco_diversities.merge(diversities, on='user')
@@ -4323,7 +4444,7 @@ class ComputeDiversityIncreaseVsUserDiversityVsLatentFactors(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -4361,7 +4482,8 @@ class ComputeDiversityIncreaseVsUserDiversityVsLatentFactors(luigi.Task):
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
         return luigi.LocalTarget(
-            aggregated.joinpath(f'{self.n_recommendations}reco-{self.model_n_factors_values}factors-diversity{self.alpha}_increase.csv')
+            aggregated.joinpath(
+                f'{self.n_recommendations}reco-{self.model_n_factors_values}factors-diversity{self.alpha}_increase.csv')
         )
 
     def run(self):
@@ -4417,7 +4539,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -4449,13 +4571,14 @@ class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations=n_recommendations
             )
-        
+
         return req
 
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
         return luigi.LocalTarget(
-            aggregated.joinpath(f'{self.n_recommendations_values}reco-{self.model_n_factors}factors-users_diversities{self.alpha}.csv')
+            aggregated.joinpath(
+                f'{self.n_recommendations_values}reco-{self.model_n_factors}factors-users_diversities{self.alpha}.csv')
         )
 
     def run(self):
@@ -4466,19 +4589,21 @@ class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
         user_item = pd.read_csv(self.input()['train_test']['train'].path)
         volume = np.log10(user_item.groupby('user')['rating'].sum()) \
             .rename('volume')
-        
+
         # Get the diversity values for the different number of factors
         reco_diversities = []
 
         for n_recommendations in self.n_recommendations_values:
             divs = pd.read_csv(
-                self.input()[f'{n_recommendations}-recommendation_diversity'].path
+                self.input()[
+                    f'{n_recommendations}-recommendation_diversity'].path
             ).rename(columns={'diversity': 'reco_diversity'})
 
             divs['n_recommendations'] = n_recommendations
             reco_diversities.append(divs)
 
-        reco_diversities: pd.DataFrame = pd.concat(reco_diversities, ignore_index=True)
+        reco_diversities: pd.DataFrame = pd.concat(
+            reco_diversities, ignore_index=True)
 
         # inner join, only keep users for whom we calculated a recommendation diversity value
         merged = reco_diversities.merge(diversities, on='user')
@@ -4509,7 +4634,7 @@ class ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(luigi.Task):
     model_regularization = luigi.parameter.FloatParameter(
         default=.1, description='Regularization factor for the norm of user/item factors'
     )
-    
+
     model_user_fraction = luigi.parameter.FloatParameter(
         default=.1, description='Proportion of users whose items are selected for test data sampling'
     )
@@ -4541,13 +4666,14 @@ class ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(luigi.Task):
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations=n_recommendations
             )
-        
+
         return req
 
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
         return luigi.LocalTarget(
-            aggregated.joinpath(f'{self.n_recommendations_values}reco-{self.model_n_factors}factors-diversity{self.alpha}_increase.csv')
+            aggregated.joinpath(
+                f'{self.n_recommendations_values}reco-{self.model_n_factors}factors-diversity{self.alpha}_increase.csv')
         )
 
     def run(self):
@@ -4558,7 +4684,7 @@ class ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(luigi.Task):
         user_item = pd.read_csv(self.input()['train_test']['train'].path)
         volume = np.log10(user_item.groupby('user')['rating'].sum()) \
             .rename('volume')
-        
+
         # Get the diversity values for the different number of factors
         deltas = []
 
@@ -4590,7 +4716,7 @@ class CollectAllModelFigures(luigi.Task):
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
-    ) 
+    )
 
     def run(self):
         figures = self.dataset.base_folder.joinpath('figures')
@@ -4603,12 +4729,12 @@ class CollectAllModelFigures(luigi.Task):
             shutil.copy(figure, destination)
 
 
-class DeleteAllModelFigures(luigi.Task): 
+class DeleteAllModelFigures(luigi.Task):
     """Delete all figures in models folders"""
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
-    ) 
+    )
 
     priority = 4
 
@@ -4619,7 +4745,6 @@ class DeleteAllModelFigures(luigi.Task):
         for figure in self.dataset.base_folder.glob('**/figures/*'):
             figure.unlink()
 
-    
     def will_delete(self):
         """Returns the paths of the files that will be deleted"""
 
@@ -4642,11 +4767,11 @@ class DeleteAllModelAnalysis(luigi.Task):
         for file in self.dataset.base_folder.glob('**/*-graph.pk'):
             file.unlink()
 
-
     def will_delete(self):
         """Returns the paths of the files that will be deleted"""
 
-        files = list(self.dataset.base_folder.glob('**/*users_diversities*.csv'))
+        files = list(self.dataset.base_folder.glob(
+            '**/*users_diversities*.csv'))
         files += list(self.dataset.base_folder.glob('**/*-graph.pk'))
 
         return iter(files)

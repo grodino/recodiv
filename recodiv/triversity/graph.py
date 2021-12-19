@@ -29,8 +29,9 @@ class NPartiteGraph:
         """
 
         self.nb_sets = int(nb_sets)
-        self.graphs= [[{} for i in range(0, self.nb_sets)] for j in range(0, self.nb_sets)]
-    
+        self.graphs = [[{} for i in range(0, self.nb_sets)]
+                       for j in range(0, self.nb_sets)]
+
         # care it need 2 s its a list of dictionnary (node,linked tree)
         # a linked tree is a dictionnary path -> distribution
         # the path is a tuple
@@ -40,7 +41,7 @@ class NPartiteGraph:
         # will save if a result have been spread
         # it will be in res if the result have been computed (all means etc)
         # the save is just for global, not individual
-        
+
         # For renaming (transforming the strings hashes of nodes into integers)
         self.ids = [dict() for i in range(self.nb_sets)]
         self.revids = [dict() for i in range(self.nb_sets)]
@@ -67,22 +68,26 @@ class NPartiteGraph:
         t = perf_counter()
 
         folder_path = Path(folder)
-        file_names = [str(file) for file in folder_path.iterdir() if file.is_file()]
+        file_names = [str(file)
+                      for file in folder_path.iterdir() if file.is_file()]
         n_entries = [0] * len(file_names) if n_entries == None else n_entries
 
         if len(n_entries) != len(file_names):
-            raise ValueError('You must provide as much line read limits (n_entries) as data files in the folder')
+            raise ValueError(
+                'You must provide as much line read limits (n_entries) as data files in the folder')
 
         graph = cls(n_sets)
 
         for file_name, n_rows in zip(file_names, n_entries):
-            print(f'Reading {n_rows if n_rows > 0 else "all"} rows from file {file_name} ...', end=' ', flush=True)
+            print(
+                f'Reading {n_rows if n_rows > 0 else "all"} rows from file {file_name} ...', end=' ', flush=True)
 
             if n_rows != 0:
                 dataset = pd.read_csv(
                     file_name,
                     sep=' ',
-                    names=['node1_level', 'node1', 'node2_level', 'node2', 'weight'],
+                    names=['node1_level', 'node1',
+                           'node2_level', 'node2', 'weight'],
                     dtype={
                         'node1_level': np.int8,
                         'node2_level': np.int8,
@@ -96,7 +101,8 @@ class NPartiteGraph:
                 dataset = pd.read_csv(
                     file_name,
                     sep=' ',
-                    names=['node1_level', 'node1', 'node2_level', 'node2', 'weight'],
+                    names=['node1_level', 'node1',
+                           'node2_level', 'node2', 'weight'],
                     dtype={
                         'node1_level': np.int8,
                         'node2_level': np.int8,
@@ -110,7 +116,8 @@ class NPartiteGraph:
             print(f'Importing links from {file_name} ...', end=' ', flush=True)
 
             for set1_id, node1, set2_id, node2, weight in dataset.itertuples(index=False):
-                graph.add_link(set1_id - 1, node1, set2_id - 1, node2, weight, index_node=True)
+                graph.add_link(set1_id - 1, node1, set2_id - 1,
+                               node2, weight, index_node=True)
 
             print('Done')
 
@@ -253,7 +260,7 @@ class NPartiteGraph:
             self.ids[set_id][node_hash] = x
             self.revids[set_id][x] = node_hash
             self.last_id[set_id] += 1
-            
+
             return x
 
     def add_link_d(self, origin_set, origin_node, destination_set, destination_node, weight):
@@ -272,7 +279,8 @@ class NPartiteGraph:
         """
 
         # Fetch origin node already known, else create it
-        d = self.graphs[origin_set][destination_set].setdefault(origin_node, dict())
+        d = self.graphs[origin_set][destination_set].setdefault(
+            origin_node, dict())
 
         # Add the neighbor (or update the weight)
         add_default(d, destination_node, weight)
@@ -296,23 +304,26 @@ class NPartiteGraph:
 
         if index_node:
             origin_node_id = self.get_default_node(origin_set, origin_node)
-            destination_node_id = self.get_default_node(destination_set, destination_node)
+            destination_node_id = self.get_default_node(
+                destination_set, destination_node)
         else:
             origin_node_id = int(origin_node)
             destination_node_id = int(destination_node)
 
-        self.add_link_d(origin_set, origin_node_id, destination_set, destination_node_id, weight)
-        self.add_link_d(destination_set, destination_node_id, origin_set, origin_node_id, weight)
-    
+        self.add_link_d(origin_set, origin_node_id,
+                        destination_set, destination_node_id, weight)
+        self.add_link_d(destination_set, destination_node_id,
+                        origin_set, origin_node_id, weight)
+
     def normalise_all(self):
         """Normalise the weights of the links coming out of each node so that
-        the sum of the weights is unitary"""    
-        
+        the sum of the weights is unitary"""
+
         for gs in self.graphs:
             for g in gs:
                 for d in g.values():
                     normalise(d)
-    
+
     def _diversity_measure(self, distribution):
         """Compute the diversity of a node with the given neighbors distribution.
 
@@ -325,7 +336,7 @@ class NPartiteGraph:
         """
 
         raise NotImplementedError()
-         
+
     def _div_init(self, n_nodes_origin, n_nodes_destination):
         """Initialises the "memory" (persistante variables) needed to compute the diversity.
 
@@ -336,7 +347,7 @@ class NPartiteGraph:
         """
 
         raise NotImplementedError()
-    
+
     def _div_add(self, node, distribution):
         """Computes the diversity on the given distribution and save it in the given memory.
 
@@ -346,13 +357,13 @@ class NPartiteGraph:
         :param distribution: a dictionnary with nodes as keys and probability as
             value (distrib_in[neighbor] = probability)
         """
-        #this step is the hard to parallelise
+        # this step is the hard to parallelise
         self._memory[0] += 1
         self._memory[1] += self._diversity_measure(distribution)
 
         for x in distribution.items():
             add_default(self._memory[2], self._memory[0], self._memory[1])
-    
+
     def _div_return(self):
         """Computes the final result and executes the last operations needed to
         be done after the spread.
@@ -364,7 +375,7 @@ class NPartiteGraph:
 
         raise NotImplementedError()
 
-    def _spread_to_neighbors(self, distrib_in, origin_set, destination_set):  
+    def _spread_to_neighbors(self, distrib_in, origin_set, destination_set):
         """Computes the neighbors distribution.
 
         Given a given node distribution (probability to arrive at each node), it
@@ -384,7 +395,7 @@ class NPartiteGraph:
 
         for node, probability in distrib_in.items():
 
-            # If node has no neighbor in the next layer (dead end in the path) 
+            # If node has no neighbor in the next layer (dead end in the path)
             # we have two options :
             #   - redristribute its weight to the nodes linked to its parent in
             #     the path
@@ -397,9 +408,9 @@ class NPartiteGraph:
             else:
                 # print(f'WARNING node {node} not in links ({origin_set} -> {destination_set})')
                 pass
-        
+
         return distribution
-        
+
     def _spread_path(self, last_distribution, path):
         """Computes the transition probabilities for walks constrained by path.
 
@@ -420,12 +431,13 @@ class NPartiteGraph:
         last_set_id = path[0]
 
         for set_id in path[1:]:
-            distribution = self._spread_to_neighbors(distribution, last_set_id, set_id)
+            distribution = self._spread_to_neighbors(
+                distribution, last_set_id, set_id)
 
             last_set_id = set_id
 
         return distribution
-            
+
     def spread_and_divs(self, path, progress=True):
         """Spread and compute the diversity via the specified functions (
         _div_init, _div_add, _div_return)
@@ -439,7 +451,7 @@ class NPartiteGraph:
 
         self._div_init(self.last_id[path[0]], self.last_id[path[-1]])
 
-        for node, neighbors in tqdm(self.graphs[path[0]][path[1]].items(), disable=not(progress), desc='Computing diversities'):            
+        for node, neighbors in tqdm(self.graphs[path[0]][path[1]].items(), disable=not(progress), desc='Computing diversities'):
             distribution = self._spread_path(neighbors, path[1:])
             self._div_add(node, distribution)
 
@@ -457,7 +469,7 @@ class NPartiteGraph:
 
         distributions = {}
 
-        for node_id, neighbors in tqdm(self.graphs[path[0]][path[1]].items(), disable=not(progress), desc='Spreading distributions'):         
+        for node_id, neighbors in tqdm(self.graphs[path[0]][path[1]].items(), disable=not(progress), desc='Spreading distributions'):
             distribution = self._spread_path(neighbors, path[1:])
             distributions[self.revids[path[0]][node_id]] = {
                 self.revids[path[-1]][node_id]: value for node_id, value in distribution.items()
@@ -468,10 +480,10 @@ class NPartiteGraph:
     def spread_node(self, node_hash, path):
         """Compute the distributions of reached nodes in the layer path[-1] for
         a single node in the layer path[0] through the given layers layer[1: -1]
-        
+
         :param node_hash: the "name" of the node to compute 
         :param path: the ids of the sets ("layers") to be traversed (in given order) by the spread.
-        
+
         :returns: The reached node distribution
         """
         node_id = self.ids[path[0]][node_hash]
@@ -499,7 +511,7 @@ class NPartiteGraph:
 
     def n_links(self, from_set, to_set):
         """Returns the number of links from as layer to an other
-        
+
         :param from_set: id of the origin layer
         :param to_set: id of the destination layer
         """
@@ -510,7 +522,6 @@ class NPartiteGraph:
             n += len(neigbours)
 
         return n
-
 
 
 class IndividualHerfindahlDiversities(NPartiteGraph):
@@ -539,7 +550,7 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
             diversity = 1 / s if s != 0 else 0
 
         return diversity
-         
+
     def _div_init(self, n_nodes_origin, n_nodes_destination):
         """Initialises the "memory" (persistante variables) needed to compute the diversity.
 
@@ -550,7 +561,7 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
         """
 
         self._memory = dict()
-    
+
     def _div_add(self, node, distribution):
         """Saves the distribution of the current step in memory, erasing the previous one
 
@@ -558,9 +569,9 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
         :param distribution: a dictionnary with nodes as keys and probability as
             value (distrib_in[neighbor] = probability)
         """
-        
+
         self._memory[node] = distribution
-    
+
     def _div_return(self):
         """Compute the diversity index of each node in the origin set
 
@@ -570,7 +581,7 @@ class IndividualHerfindahlDiversities(NPartiteGraph):
 
         for node, distribution in self._memory.items():
             diversities[node] = self._diversity_measure(distribution)
-        
+
         return diversities
 
     def diversities(self, path, alpha=2, progress=True):
@@ -614,7 +625,7 @@ if __name__ == '__main__':
     # Tag 0
     listening_graph.add_link(2, 'tag_0', 1, 'item_1', 1)
 
-    # Tag 1 
+    # Tag 1
     listening_graph.add_link(2, 'tag_1', 1, 'item_0', 1)
     listening_graph.add_link(2, 'tag_1', 1, 'item_1', 1)
     listening_graph.add_link(2, 'tag_1', 1, 'item_2', 1)
@@ -626,7 +637,9 @@ if __name__ == '__main__':
 
     listening_graph.normalise_all()
     print(listening_graph.spread_node('user_1', (0, 1, 2)))
-    assert(listening_graph.spread_node('user_1', (0, 1, 2)) == {'tag_1': 1/4, 'tag_2': 3/4})
+    assert(listening_graph.spread_node('user_1', (0, 1, 2))
+           == {'tag_1': 1/4, 'tag_2': 3/4})
 
     print(listening_graph.diversities((0, 1, 2), 0))
-    assert(listening_graph.diversities((0, 1, 2), 0) == {'user_0': 3, 'user_1': 2})
+    assert(listening_graph.diversities((0, 1, 2), 0)
+           == {'user_0': 3, 'user_1': 2})

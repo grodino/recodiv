@@ -29,7 +29,8 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         TrainTestInfo(dataset=msd_dataset),
         PlotTrainTestUsersDiversitiesHistogram(dataset=msd_dataset, alpha=0),
         PlotTrainTestUsersDiversitiesHistogram(dataset=msd_dataset, alpha=2),
-        PlotTrainTestUsersDiversitiesHistogram(dataset=msd_dataset, alpha=float('inf')),
+        PlotTrainTestUsersDiversitiesHistogram(
+            dataset=msd_dataset, alpha=float('inf')),
     ]
 
     # Model convergence plot
@@ -186,7 +187,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             n_recommendations=N_RECOMMENDATIONS,
             alpha=float('inf')
         ),
-         # Herfindal
+        # Herfindal
         PlotRecommendationsUsersDiversitiesHistogram(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
@@ -213,7 +214,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             n_recommendations=10,
             alpha=float('inf')
         ),
-         # Herfindal
+        # Herfindal
         PlotRecommendationsUsersDiversitiesHistogram(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
@@ -253,7 +254,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             n_recommendations=N_RECOMMENDATIONS,
             alpha=2
         ),
-         # Herfindal
+        # Herfindal
         PlotDiversitiesIncreaseHistogram(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
@@ -262,7 +263,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             n_recommendations=10,
             alpha=2
         ),
-         # Herfindal
+        # Herfindal
         PlotDiversitiesIncreaseHistogram(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
@@ -272,7 +273,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             alpha=2
         ),
     ]
-    
+
     # Recommendation diversity increase vs organic diversity at equilibrium and variations
     tasks += [
         # Herfindal
@@ -480,7 +481,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
         PlotDiversityVsRecommendationVolume(
             dataset=msd_dataset,
             alpha=float('inf'),
-            model_n_iterations=N_ITERATIONS,    
+            model_n_iterations=N_ITERATIONS,
             n_factors_values=[5, 20, 500, 3_000],
             model_regularization=OPT_REGULARIZATION,
             n_recommendations_values=N_RECOMMENDATIONS_VALUES
@@ -565,7 +566,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=N_RECOMMENDATIONS
         ),
-         PlotDiversityIncreaseVsLatentFactors(
+        PlotDiversityIncreaseVsLatentFactors(
             dataset=msd_dataset,
             alpha=2,
             model_n_iterations=N_ITERATIONS,
@@ -688,7 +689,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             n_recommendations=50,
         ),
     ]
-    
+
     # Compare the best tag rank to the diversity increase of users
     tasks += [
         # Herfindal
