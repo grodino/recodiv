@@ -17,7 +17,7 @@ from automation.msd_dataset import DeleteAllModelAnalysis
     help='Number of users to sample from the datasest'
 )
 @click.option(
-    '--local-scheduler',
+    '--local-scheduler/--no-local-scheduler',
     default=False,
     type=bool,
     help='Use a luigi local scheduler for the tasks execution'
