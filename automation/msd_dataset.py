@@ -38,11 +38,10 @@ GENERATED = Path('generated/')
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+
 ################################################################################
 # DATASETS DECLARATION                                                         #
 ################################################################################
-
-
 class Dataset():
     """Representation of a dataset
 
@@ -61,6 +60,9 @@ class Dataset():
     data_folder: Path
     user_item: pd.DataFrame
     item_tag: pd.DataFrame
+
+    def import_data():
+        raise NotImplementedError()
 
 
 class MsdDataset(Dataset):
@@ -97,11 +99,11 @@ class MsdDataset(Dataset):
             sep=' ',
             names=['node1_level', 'user', 'node2_level', 'item', 'rating'],
             dtype={
-                'node1_level': np.int8,
-                'node2_level': np.int8,
+                'node1_level': np.int,
+                'node2_level': np.int,
                 'user': np.str,
                 'item': np.str,
-                'rating': np.float32
+                'rating': np.float
             },
             # nrows=1_000_000,
             engine='c'
@@ -113,11 +115,11 @@ class MsdDataset(Dataset):
             sep=' ',
             names=['node1_level', 'item', 'node2_level', 'tag', 'weight'],
             dtype={
-                'node1_level': np.int8,
-                'node2_level': np.int8,
+                'node1_level': np.int,
+                'node2_level': np.int,
                 'item': np.str,
                 'tag': np.str,
-                'weight': np.int32
+                'weight': np.int
             },
             engine='c'
         )[['item', 'tag', 'weight']]
@@ -138,8 +140,10 @@ class MsdDataset(Dataset):
             # Too slow when importing the whole dataset
             logger.debug(f'Removing songs not listened to')
             item_tag.set_index('item', inplace=True)
-            item_tag = item_tag.loc[user_item['item']
-                                    ].reset_index().drop_duplicates()
+            item_tag = item_tag \
+                .loc[user_item['item']] \
+                .reset_index() \
+                .drop_duplicates()
 
         logger.debug(
             f'Finished importing dataset in {time.perf_counter() - t}')
@@ -150,11 +154,10 @@ class MsdDataset(Dataset):
     def __str__(self):
         return self.NAME
 
+
 ################################################################################
 # DATASET ANALYSIS                                                             #
 ################################################################################
-
-
 class ImportDataset(luigi.Task):
     """Import a dataset from via its class (ex: MsdDataset)"""
 
@@ -455,38 +458,47 @@ class GenerateTrainTest(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    row_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of items that are selected for testing for each user in the test set'
+    )
+    n_fold = luigi.parameter.IntParameter(
+        default=5, description='Number of user partitions, used in a leave 1 out validation scheme'
     )
 
-    def requires(self):
+    def requires(self) -> luigi.Task:
         return ImportDataset(dataset=self.dataset)
 
-    def output(self):
-        return {
-            'train': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(
-                    f'train-{int((1 - self.user_fraction) * 100)}.csv'),
-                format=Nop
-            ),
-            'test': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(
-                    f'test-{int(self.user_fraction * 100)}.csv'),
-                format=Nop
-            )
-        }
+    def output(self) -> list[dict[str, luigi.LocalTarget]]:
+        out = []
+
+        for i in range(self.n_fold):
+            out.append({
+                'train': luigi.LocalTarget(
+                    self.dataset.data_folder.joinpath(
+                        f'fold-{i}/train.csv'),
+                    format=Nop
+                ),
+                'test': luigi.LocalTarget(
+                    self.dataset.data_folder.joinpath(
+                        f'fold-{i}/test.csv'),
+                    format=Nop
+                )
+            })
+
+        return out
 
     def run(self):
-        for out in self.output().values():
-            out.makedirs()
+        for out in self.output():
+            out['train'].makedirs()
+            out['test'].makedirs()
 
         user_item = pd.read_csv(self.input()['user_item'].path)
-        train, test = split_dataset(user_item, self.user_fraction)
 
-        train.to_csv(self.output()['train'].path, index=False)
-        test.to_csv(self.output()['test'].path, index=False)
+        for i, (train, test) in enumerate(split_dataset(user_item, self.row_fraction)):
+            train.to_csv(self.output()[i]['train'].path, index=False)
+            test.to_csv(self.output()[i]['test'].path, index=False)
 
-        del user_item, train, test
+        del user_item
 
 
 class TrainTestInfo(luigi.Task):
@@ -495,14 +507,18 @@ class TrainTestInfo(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    row_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of items that are selected for testing for each user in the test set'
+    )
+    n_fold = luigi.parameter.IntParameter(
+        default=5, description='Number of user partitions, used in a leave 1 out validation scheme'
     )
 
     def requires(self):
         return GenerateTrainTest(
             dataset=self.dataset,
-            user_fraction=self.user_fraction
+            n_fold=self.n_fold,
+            row_fraction=self.row_fraction
         )
 
     def output(self):
@@ -511,27 +527,29 @@ class TrainTestInfo(luigi.Task):
         )
 
     def run(self):
-        train = pd.read_csv(self.input()['train'].path)
-        test = pd.read_csv(self.input()['test'].path)
         info = {}
 
-        info['train'] = {
-            'n_users': len(train['user'].unique()),
-            'n_items': len(train['item'].unique()),
-            'n_user_item_links': len(train)
-        }
-        info['test'] = {
-            'n_users': len(test['user'].unique()),
-            'n_items': len(test['item'].unique()),
-            'n_user_item_links': len(test)
-        }
+        for i, fold in enumerate(self.input()):
+            train = pd.read_csv(fold['train'].path)
+            test = pd.read_csv(fold['test'].path)
+
+            info[f'fold-{i}'] = {}
+            info[f'fold-{i}']['train'] = {
+                'n_users': len(train['user'].unique()),
+                'n_items': len(train['item'].unique()),
+                'n_user_item_links': len(train)
+            }
+            info[f'fold-{i}']['test'] = {
+                'n_users': len(test['user'].unique()),
+                'n_items': len(test['item'].unique()),
+                'n_user_item_links': len(test)
+            }
 
         with self.output().open('w') as file:
             json.dump(info, file, indent=4)
 
-        del train, test
 
-
+# TODO: Rethink what to define as train/test individual metrics
 class BuildTrainTestGraphs(luigi.Task):
     """Build users-songs-tags graph for the train and test sets"""
 
@@ -843,8 +861,14 @@ class TrainModel(luigi.Task):
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
 
-    user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    row_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of items that are selected for testing for each user in the test set'
+    )
+    n_fold = luigi.parameter.IntParameter(
+        default=5, description='Number of user partitions, used in a leave 1 out validation scheme'
+    )
+    fold_id = luigi.parameter.IntParameter(
+        default=0, description='Select the fold_id\'th train/test pair'
     )
 
     save_training_loss = luigi.BoolParameter(
@@ -854,12 +878,13 @@ class TrainModel(luigi.Task):
     def requires(self):
         return GenerateTrainTest(
             dataset=self.dataset,
-            user_fraction=self.user_fraction
+            row_fraction=self.row_fraction,
+            n_fold=self.n_fold,
         )
 
     def output(self):
         model = self.dataset.base_folder.joinpath(
-            f'model-{self.n_iterations}it-{self.n_factors}f-{str(self.regularization).replace(".", "_")}reg-{int(self.confidence_factor)}c/'
+            f'fold_{self.fold_id}-model-{self.n_iterations}it-{self.n_factors}f-{str(self.regularization).replace(".", "_")}reg-{int(self.confidence_factor)}c/'
         )
 
         out = {'model': luigi.LocalTarget(model.joinpath('model.bpk'))}
@@ -875,10 +900,7 @@ class TrainModel(luigi.Task):
         for out in self.output().values():
             out.makedirs()
 
-        # TODO : verify that this syntax works well with the now used dict input
-        train_file, test_file = self.input()
-
-        train = pd.read_csv(self.input()['train'].path)
+        train = pd.read_csv(self.input()[self.fold_id]['train'].path)
 
         model, loss = train_model(
             train,

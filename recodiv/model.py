@@ -1,22 +1,16 @@
-import os
-import pickle
-from pathlib import Path
-from time import perf_counter
+from collections.abc import Iterator
+from typing import Tuple
 
 import numba as nb
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from matplotlib import pyplot as pl
 
 from lenskit import topn
-from lenskit import util
 from lenskit import batch
 from lenskit import crossfold as xf
 from lenskit.algorithms import als
-from lenskit.metrics.predict import rmse
 from lenskit.algorithms import Recommender
-from lenskit.algorithms.basic import TopN, Memorized
 
 METRICS = {
     'ndcg': topn.ndcg,
@@ -26,33 +20,47 @@ METRICS = {
 }
 
 
-def split_dataset(ratings, user_fraction=.1):
-    """Split a dataset in train/test data"""
+def split_dataset(ratings: pd.DataFrame, row_fraction: float = .1, n_folds: int = 5) -> Iterator[Tuple[pd.DataFrame, pd.DataFrame]]:
+    """Split a dataset in train/test data
+
+    The train/test split is done as such:
+    1. Partition the users in n_folds sets. 
+    2. For each user set, sample a proportion row_fraction of listenings for the
+       test set. Put the rest (not selected listenings + listening of users in
+       the other sets) in the training set.
+
+    This yields n_fold train/test pairs as a generator
+
+    Parameters
+    ----------
+    ratings : pd.DataFrame The (user, item, playcout) triplets row_fraction :
+        float, optional The fraction of listened items to keep in the test set,
+        by default .1 n_folds : int, optional The number of user partitions, by
+        default 5
+
+    Returns
+    -------
+    [type] [description]
+    """
 
     n_users = len(ratings['user'].unique())
 
-    # There are many ways to separate a dataset in (train, test) data, here are two:
-    #   - Row separation: the test set will contain users that the model knows.
-    #     The performance of the model will be its ability to predict "new"
-    #     tastes for a known user
-    #   - User separation: the test set will contain users that the model has
-    #     never encountered. The performance of the model will be its abiliy to
-    #     predict new users behaviours considering the behaviour of other
-    #     known users.
     # see [lkpy documentation](https://lkpy.readthedocs.io/en/stable/crossfold.html)
     # Here the sampling is as follow:
     #   - Sample test_fraction * n_total users
     #   - Randomly select half of their listenings for the test set
-    result = list(xf.sample_users(
-        ratings[['user', 'item', 'rating']],
-        partitions=1,
-        size=int(n_users * user_fraction),
-        method=xf.SampleFrac(.5)
-    ))[0]
+    result = iter(map(
+        lambda tt_pair: (tt_pair.train, tt_pair.test),
+        list(xf.partition_users(
+            ratings[['user', 'item', 'rating']],
+            partitions=n_folds,
+            method=xf.SampleFrac(row_fraction)
+        ))
+    ))
 
-    print(f'n test users: {len(result.test["user"].unique())}')
+    # print(f'n test users: {len(result.test["user"].unique())}')
 
-    return result.train, result.test
+    return result
 
 
 def train_model(
@@ -230,15 +238,3 @@ def tags_distance(distribution: pd.Series, other: pd.Series, tags: pd.Index, p=1
     # print(distrib, other, sep='\n')
 
     return wasserstein_1d(distrib.to_numpy(), other.to_numpy())
-
-
-if __name__ == '__main__':
-    tags = pd.Index(['rock', 'pop', 'jazz', 'metal', 'classical'])
-    distribution = pd.Series({'rock': 3, 'pop': 10, 'jazz': 1})
-    other = pd.Series({'rock': 10, 'pop': 1, 'jazz': 5})
-
-    other_unbalanced = pd.Series(
-        {'rock': 10, 'pop': 1, 'jazz': 5, 'metal': 10})
-
-    print(tags_distance(distribution, other, tags, p=2))
-    print(tags_distance(distribution, other_unbalanced, tags, p=2))

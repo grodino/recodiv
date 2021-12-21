@@ -12,6 +12,15 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
 
     tasks = [
         GenerateTrainTest(dataset=msd_dataset),
+        TrainTestInfo(dataset=msd_dataset),
+        TrainModel(
+            dataset=msd_dataset,
+            n_iterations=10,
+            n_factors=64,
+            regularization=10_000,
+            confidence_factor=40,
+            fold_id=2,
+        )
     ]
 
     return tasks
