@@ -2,6 +2,7 @@ import click
 
 from automation.config import *
 from automation.interactive import *
+from automation.paper import dev_tasks
 from automation.paper import paper_figures
 from automation.msd_dataset import MsdDataset
 from automation.msd_dataset import DeleteAllModelFigures
@@ -46,6 +47,21 @@ def report_figures(context):
     name = context.obj['name']
 
     tasks = paper_figures(n_users, name)
+
+    luigi.build(tasks, local_scheduler=local_scheduler,
+                log_level='INFO', scheduler_host='127.0.0.1')
+
+
+@cli.command()
+@click.pass_context
+def dev(context):
+    """Run tasks in development"""
+
+    n_users = context.obj['n_users']
+    local_scheduler = context.obj['local_scheduler']
+    name = context.obj['name']
+
+    tasks = dev_tasks(n_users, name)
 
     luigi.build(tasks, local_scheduler=local_scheduler,
                 log_level='INFO', scheduler_host='127.0.0.1')

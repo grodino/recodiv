@@ -7,6 +7,16 @@ from automation.config import *
 from automation.msd_dataset import *
 
 
+def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
+    msd_dataset = MsdDataset(name, n_users=n_users)
+
+    tasks = [
+        GenerateTrainTest(dataset=msd_dataset),
+    ]
+
+    return tasks
+
+
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
     msd_dataset = MsdDataset(name, n_users=n_users)
 
