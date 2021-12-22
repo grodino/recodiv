@@ -2,9 +2,11 @@ import json
 import time
 import shutil
 import logging
+from abc import ABC, abstractmethod
 from pathlib import Path
 
 import luigi
+from luigi import parameter
 from luigi.format import Nop
 import binpickle
 import tikzplotlib
@@ -42,7 +44,7 @@ logger.setLevel(logging.DEBUG)
 ################################################################################
 # DATASETS DECLARATION                                                         #
 ################################################################################
-class Dataset():
+class Dataset(ABC):
     """Representation of a dataset
 
     All dataset classes must have the following properties: 
@@ -61,6 +63,7 @@ class Dataset():
     user_item: pd.DataFrame
     item_tag: pd.DataFrame
 
+    @abstractmethod
     def import_data():
         raise NotImplementedError()
 
@@ -458,11 +461,8 @@ class GenerateTrainTest(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    row_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of items that are selected for testing for each user in the test set'
-    )
-    n_fold = luigi.parameter.IntParameter(
-        default=5, description='Number of user partitions, used in a leave 1 out validation scheme'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
 
     def requires(self) -> luigi.Task:
@@ -471,16 +471,16 @@ class GenerateTrainTest(luigi.Task):
     def output(self) -> list[dict[str, luigi.LocalTarget]]:
         out = []
 
-        for i in range(self.n_fold):
+        for i in range(self.split['n_fold']):
             out.append({
                 'train': luigi.LocalTarget(
                     self.dataset.data_folder.joinpath(
-                        f'fold-{i}/train.csv'),
+                        f'{self.split["name"]}/fold-{i}/train.csv'),
                     format=Nop
                 ),
                 'test': luigi.LocalTarget(
                     self.dataset.data_folder.joinpath(
-                        f'fold-{i}/test.csv'),
+                        f'{self.split["name"]}/fold-{i}/test.csv'),
                     format=Nop
                 )
             })
@@ -494,9 +494,14 @@ class GenerateTrainTest(luigi.Task):
 
         user_item = pd.read_csv(self.input()['user_item'].path)
 
-        for i, (train, test) in enumerate(split_dataset(user_item, self.row_fraction)):
-            train.to_csv(self.output()[i]['train'].path, index=False)
-            test.to_csv(self.output()[i]['test'].path, index=False)
+        if self.split['name'] == 'leave-one-out':
+            for i, (train, test) in enumerate(split_dataset(user_item, self.split['row_fraction'])):
+                train.to_csv(self.output()[i]['train'].path, index=False)
+                test.to_csv(self.output()[i]['test'].path, index=False)
+
+        else:
+            raise NotImplementedError(
+                'The requested train-test split method is not implemented')
 
         del user_item
 
@@ -507,23 +512,20 @@ class TrainTestInfo(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    row_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of items that are selected for testing for each user in the test set'
-    )
-    n_fold = luigi.parameter.IntParameter(
-        default=5, description='Number of user partitions, used in a leave 1 out validation scheme'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
 
     def requires(self):
         return GenerateTrainTest(
             dataset=self.dataset,
-            n_fold=self.n_fold,
-            row_fraction=self.row_fraction
+            split=self.split,
         )
 
     def output(self):
         return luigi.LocalTarget(
-            self.dataset.data_folder.joinpath('train_test_info.json')
+            self.dataset.data_folder.joinpath(
+                f'{self.split["name"]}/train_test_info.json')
         )
 
     def run(self):
@@ -848,24 +850,12 @@ class TrainModel(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-    confidence_factor = luigi.parameter.FloatParameter(
-        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    row_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of items that are selected for testing for each user in the test set'
-    )
-    n_fold = luigi.parameter.IntParameter(
-        default=5, description='Number of user partitions, used in a leave 1 out validation scheme'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
     fold_id = luigi.parameter.IntParameter(
         default=0, description='Select the fold_id\'th train/test pair'
@@ -878,20 +868,24 @@ class TrainModel(luigi.Task):
     def requires(self):
         return GenerateTrainTest(
             dataset=self.dataset,
-            row_fraction=self.row_fraction,
-            n_fold=self.n_fold,
+            split=self.split
         )
 
     def output(self):
-        model = self.dataset.base_folder.joinpath(
-            f'fold_{self.fold_id}-model-{self.n_iterations}it-{self.n_factors}f-{str(self.regularization).replace(".", "_")}reg-{int(self.confidence_factor)}c/'
+        model_str = '-'.join(
+            '_'.join((key, str(val))) for key, val in self.model.items() if key != 'name'
+        )
+        model_path = self.dataset.base_folder.joinpath(
+            f'models/{self.model["name"]}/{self.split["name"]}/' + model_str
         )
 
-        out = {'model': luigi.LocalTarget(model.joinpath('model.bpk'))}
+        out = {'model': luigi.LocalTarget(
+            model_path.joinpath(f'fold_{self.fold_id}.bpk')
+        )}
 
         if self.save_training_loss == True:
             out['train_loss'] = luigi.LocalTarget(
-                model.joinpath(f'train_loss.csv')
+                model_path.joinpath(f'train_loss.csv')
             )
 
         return out
@@ -904,10 +898,10 @@ class TrainModel(luigi.Task):
 
         model, loss = train_model(
             train,
-            n_factors=self.n_factors,
-            n_iterations=self.n_iterations,
-            confidence_factor=self.confidence_factor,
-            regularization=self.regularization,
+            n_factors=self.model['n_factors'],
+            n_iterations=self.model['n_iterations'],
+            confidence_factor=self.model['confidence_factor'],
+            regularization=self.model['regularization'],
             save_training_loss=self.save_training_loss
         )
 
@@ -920,11 +914,6 @@ class TrainModel(luigi.Task):
         del train, model, loss
 
 
-class TrainBaselines(luigi.Task):
-    """ Train baseline recommender models """
-    pass
-
-
 class PlotTrainLoss(luigi.Task):
     """Plot the loss of a model for each iteration step"""
 
@@ -932,41 +921,33 @@ class PlotTrainLoss(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-    model_confidence_factor = luigi.parameter.FloatParameter(
-        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
+    )
+    fold_id = luigi.parameter.IntParameter(
+        default=0, description='Select the fold_id\'th train/test pair'
     )
 
     def requires(self):
         return TrainModel(
             dataset=self.dataset,
-            n_iterations=self.model_n_iterations,
-            n_factors=self.model_n_factors,
-            regularization=self.model_regularization,
-            confidence_factor=self.model_confidence_factor,
-            user_fraction=self.model_user_fraction,
+            model=self.model,
+            split=self.split,
+            fold_id=self.fold_id,
             save_training_loss=True
         )
 
     def output(self):
         model = Path(self.input()['model'].path).parent
 
-        return {
-            'png': luigi.LocalTarget(model.joinpath('training-loss.png'), format=Nop),
-            'latex': luigi.LocalTarget(model.joinpath('training-loss.tex'), format=Nop)
-        }
+        return luigi.LocalTarget(
+            model.joinpath(f'fold_{self.fold_id}-training-loss-.png'),
+            format=Nop
+        )
 
     def run(self):
         loss = pd.read_csv(self.input()['train_loss'].path)
@@ -978,11 +959,10 @@ class PlotTrainLoss(luigi.Task):
         ax.semilogy(iterations, loss)
         ax.set_xlabel('iteration')
         ax.set_ylabel('loss')
-        fig.savefig(self.output()['png'].path, format='png', dpi=300)
-
-        tikzplotlib.save(self.output()['latex'].path)
+        fig.savefig(self.output().path, format='png', dpi=300)
 
 
+# TODO: think how we compute the recommendations generation
 class GenerateRecommendations(luigi.Task):
     """Generate recommendations for users in test dataset with a given model"""
 
@@ -990,7 +970,7 @@ class GenerateRecommendations(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -1003,8 +983,14 @@ class GenerateRecommendations(luigi.Task):
         default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
     )
 
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    row_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of items that are selected for testing for each user in the test set'
+    )
+    n_fold = luigi.parameter.IntParameter(
+        default=5, description='Number of user partitions, used in a leave 1 out validation scheme'
+    )
+    fold_id = luigi.parameter.IntParameter(
+        default=0, description='Select the fold_id\'th train/test pair'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1019,12 +1005,14 @@ class GenerateRecommendations(luigi.Task):
             ),
             'model': TrainModel(
                 dataset=self.dataset,
-                n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 n_factors=self.model_n_factors,
                 regularization=self.model_regularization,
-                user_fraction=self.model_user_fraction,
                 save_training_loss=False,
-                confidence_factor=self.model_confidence_factor
+                confidence_factor=self.model_confidence_factor,
+                row_fraction=self.row_fraction,
+                n_fold=self.n_fold,
+                fold_id=self.fold_id
             )
         }
 
@@ -1041,6 +1029,8 @@ class GenerateRecommendations(luigi.Task):
         model = binpickle.load(self.input()['model']['model'].path)
         ratings = pd.read_csv(self.input()['data']['test'].path)
 
+        # TODO: change the generate_recomendations to include only the relevant
+        # fold
         generate_recommendations(
             model,
             ratings,
@@ -1057,7 +1047,7 @@ class GeneratePredictions(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -1086,7 +1076,7 @@ class GeneratePredictions(luigi.Task):
             ),
             'model': TrainModel(
                 dataset=self.dataset,
-                n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 n_factors=self.model_n_factors,
                 regularization=self.model_regularization,
                 user_fraction=self.model_user_fraction,
@@ -1139,7 +1129,7 @@ class EvaluateUserRecommendations(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -1164,7 +1154,7 @@ class EvaluateUserRecommendations(luigi.Task):
         return {
             'recommendations': GenerateRecommendations(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -1228,7 +1218,7 @@ class PlotUserEvaluationHistogram(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -1252,7 +1242,7 @@ class PlotUserEvaluationHistogram(luigi.Task):
     def requires(self):
         return EvaluateUserRecommendations(
             dataset=self.dataset,
-            model_n_iterations=self.model_n_iterations,
+            n_iterations=self.n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
             model_user_fraction=self.model_user_fraction,
@@ -1288,7 +1278,7 @@ class EvaluateModel(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -1313,7 +1303,7 @@ class EvaluateModel(luigi.Task):
         return {
             'model': TrainModel(
                 dataset=self.dataset,
-                n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 n_factors=self.model_n_factors,
                 regularization=self.model_regularization,
                 user_fraction=self.model_user_fraction,
@@ -1322,7 +1312,7 @@ class EvaluateModel(luigi.Task):
             ),
             'predictions': GeneratePredictions(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -1331,7 +1321,7 @@ class EvaluateModel(luigi.Task):
             ),
             'user_eval': EvaluateUserRecommendations(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -1385,7 +1375,7 @@ class TuneModelHyperparameters(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors_values = luigi.parameter.ListParameter(
@@ -1417,7 +1407,7 @@ class TuneModelHyperparameters(luigi.Task):
         for n_factors, regularization in self.hyperparameters:
             required[(n_factors, regularization)] = EvaluateModel(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -1470,7 +1460,7 @@ class PlotModelTuning(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors_values = luigi.parameter.ListParameter(
@@ -1509,7 +1499,7 @@ class PlotModelTuning(luigi.Task):
         for n_factors, regularization in self.hyperparameters:
             required[(n_factors, regularization)] = EvaluateModel(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -1625,7 +1615,7 @@ class PlotModelEvaluationVsLatentFactors(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors_values = luigi.parameter.ListParameter(
@@ -1652,7 +1642,7 @@ class PlotModelEvaluationVsLatentFactors(luigi.Task):
         for n_factors in self.model_n_factors_values:
             req[n_factors] = EvaluateModel(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -1715,7 +1705,7 @@ class BuildRecommendationGraph(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -1738,7 +1728,7 @@ class BuildRecommendationGraph(luigi.Task):
             'dataset': ImportDataset(self.dataset),
             'recommendations': GenerateRecommendations(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -1778,7 +1768,7 @@ class ComputeRecommendationDiversities(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -1799,7 +1789,7 @@ class ComputeRecommendationDiversities(luigi.Task):
     def requires(self):
         return BuildRecommendationGraph(
             dataset=self.dataset,
-            model_n_iterations=self.model_n_iterations,
+            n_iterations=self.n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
             model_user_fraction=self.model_user_fraction,
@@ -1842,7 +1832,7 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -1864,7 +1854,7 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         return ComputeRecommendationDiversities(
             dataset=self.dataset,
             alpha=self.alpha,
-            model_n_iterations=self.model_n_iterations,
+            n_iterations=self.n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
             model_user_fraction=self.model_user_fraction,
@@ -1904,7 +1894,7 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -1944,7 +1934,7 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
             'recommendation_diversity': ComputeRecommendationDiversities(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -2036,7 +2026,7 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -2066,7 +2056,7 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
             ),
             'recommendations': GenerateRecommendations(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -2115,7 +2105,7 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -2136,7 +2126,7 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
     def requires(self):
         return BuildRecommendationsWithListeningsGraph(
             dataset=self.dataset,
-            model_n_iterations=self.model_n_iterations,
+            n_iterations=self.n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
             model_user_fraction=self.model_user_fraction,
@@ -2183,7 +2173,7 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -2206,7 +2196,7 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
             'with_recommendations': ComputeRecommendationWithListeningsUsersDiversities(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -2255,7 +2245,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -2277,7 +2267,7 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         return ComputeRecommendationWithListeningsUsersDiversityIncrease(
             dataset=self.dataset,
             alpha=self.alpha,
-            model_n_iterations=self.model_n_iterations,
+            n_iterations=self.n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
             model_user_fraction=self.model_user_fraction,
@@ -2324,7 +2314,7 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -2372,7 +2362,7 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
             'diversity_increase': ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -2483,7 +2473,7 @@ class ComputeUserRecommendationsTagsDistribution(luigi.Task):
         description="The hash of the studied user"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -2507,7 +2497,7 @@ class ComputeUserRecommendationsTagsDistribution(luigi.Task):
     def requires(self):
         return BuildRecommendationGraph(
             dataset=self.dataset,
-            model_n_iterations=self.model_n_iterations,
+            n_iterations=self.n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
             model_user_fraction=self.model_user_fraction,
@@ -2550,7 +2540,7 @@ class ComputeUserListenedRecommendedTagsDistribution(luigi.Task):
         description="The hash of the studied user"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -2574,7 +2564,7 @@ class ComputeUserListenedRecommendedTagsDistribution(luigi.Task):
     def requires(self):
         return BuildRecommendationsWithListeningsGraph(
             dataset=self.dataset,
-            model_n_iterations=self.model_n_iterations,
+            n_iterations=self.n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
             model_user_fraction=self.model_user_fraction,
@@ -2614,7 +2604,7 @@ class PlotUserRecommendationsTagsDistribution(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -2647,7 +2637,7 @@ class PlotUserRecommendationsTagsDistribution(luigi.Task):
         return ComputeUserRecommendationsTagsDistribution(
             dataset=self.dataset,
             user=self.user,
-            model_n_iterations=self.model_n_iterations,
+            n_iterations=self.n_iterations,
             model_n_factors=self.model_n_factors,
             model_regularization=self.model_regularization,
             model_user_fraction=self.model_user_fraction,
@@ -2679,7 +2669,7 @@ class PlotUserListeningRecommendationsTagsDistributions(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -2713,7 +2703,7 @@ class PlotUserListeningRecommendationsTagsDistributions(luigi.Task):
             'recommended_tags': ComputeUserRecommendationsTagsDistribution(
                 dataset=self.dataset,
                 user=self.user,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -2771,7 +2761,7 @@ class ComputeHeaviestTagRank(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -2796,7 +2786,7 @@ class ComputeHeaviestTagRank(luigi.Task):
         return {
             'recommendation_graph': BuildRecommendationGraph(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -2870,7 +2860,7 @@ class PlotHeaviestTagRankVsPercentageIncreased(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -2899,7 +2889,7 @@ class PlotHeaviestTagRankVsPercentageIncreased(luigi.Task):
         return {
             'tag_rank': ComputeHeaviestTagRank(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -2907,7 +2897,7 @@ class PlotHeaviestTagRankVsPercentageIncreased(luigi.Task):
             ),
             'increase': ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -2971,7 +2961,7 @@ class PlotUserTagHistograms(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -3005,7 +2995,7 @@ class PlotUserTagHistograms(luigi.Task):
             'recommended_tags': ComputeUserRecommendationsTagsDistribution(
                 dataset=self.dataset,
                 user=self.user,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3019,7 +3009,7 @@ class PlotUserTagHistograms(luigi.Task):
             'after_reco_tags': ComputeUserListenedRecommendedTagsDistribution(
                 dataset=self.dataset,
                 user=self.user,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3028,7 +3018,7 @@ class PlotUserTagHistograms(luigi.Task):
             'increase': ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3191,7 +3181,7 @@ class MetricsSummary(luigi.Task):
         description="The true diversity orders used"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -3230,7 +3220,7 @@ class MetricsSummary(luigi.Task):
                 req[f'reco{n_recommendations}_div{alpha}'] = ComputeRecommendationDiversities(
                     dataset=self.dataset,
                     alpha=alpha,
-                    model_n_iterations=self.model_n_iterations,
+                    n_iterations=self.n_iterations,
                     model_n_factors=self.model_n_factors,
                     model_regularization=self.model_regularization,
                     model_user_fraction=self.model_user_fraction,
@@ -3239,7 +3229,7 @@ class MetricsSummary(luigi.Task):
                 req[f'reco{n_recommendations}_div{alpha}_increase'] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
                     dataset=self.dataset,
                     alpha=alpha,
-                    model_n_iterations=self.model_n_iterations,
+                    n_iterations=self.n_iterations,
                     model_n_factors=self.model_n_factors,
                     model_regularization=self.model_regularization,
                     model_user_fraction=self.model_user_fraction,
@@ -3324,7 +3314,7 @@ class ComputeRecommendationDiversityVsLatentFactors(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     n_factors_values = luigi.parameter.ListParameter(
@@ -3350,7 +3340,7 @@ class ComputeRecommendationDiversityVsLatentFactors(luigi.Task):
         for n_factors in self.n_factors_values:
             tasks[n_factors] = GenerateRecommendations(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3406,7 +3396,7 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     n_factors_values = luigi.parameter.ListParameter(
@@ -3430,7 +3420,7 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
         for n_factors in self.n_factors_values:
             req[n_factors] = EvaluateModel(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3440,7 +3430,7 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
         req['diversity'] = ComputeRecommendationDiversityVsLatentFactors(
             dataset=self.dataset,
             alpha=self.alpha,
-            model_n_iterations=self.model_n_iterations,
+            n_iterations=self.n_iterations,
             n_factors_values=self.n_factors_values,
             model_regularization=self.model_regularization,
             model_user_fraction=self.model_user_fraction,
@@ -3525,7 +3515,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     n_factors_values = luigi.parameter.ListParameter(
@@ -3550,7 +3540,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
             tasks[(n_factors, 'deltas')] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3558,7 +3548,7 @@ class PlotDiversityIncreaseVsLatentFactors(luigi.Task):
             )
             tasks[(n_factors, 'metrics')] = EvaluateModel(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3635,7 +3625,7 @@ class PlotDiversityVsRegularization(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -3660,7 +3650,7 @@ class PlotDiversityVsRegularization(luigi.Task):
             tasks[(regularization, 'diversities')] = ComputeRecommendationDiversities(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3668,7 +3658,7 @@ class PlotDiversityVsRegularization(luigi.Task):
             )
             tasks[(regularization, 'metrics')] = EvaluateModel(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3745,7 +3735,7 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -3770,7 +3760,7 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
             tasks[(regularization, 'deltas')] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3778,7 +3768,7 @@ class PlotDiversityIncreaseVsRegularization(luigi.Task):
             )
             tasks[(regularization, 'metrics')] = EvaluateModel(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3855,7 +3845,7 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -3878,7 +3868,7 @@ class ComputeDiversityVsRecommendationVolume(luigi.Task):
             'dataset': ImportDataset(dataset=self.dataset),
             'recommendations': GenerateRecommendations(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -3933,7 +3923,7 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     n_factors_values = luigi.parameter.ListParameter(
@@ -3958,7 +3948,7 @@ class PlotDiversityVsRecommendationVolume(luigi.Task):
             tasks[n_factors] = ComputeDiversityVsRecommendationVolume(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -4013,7 +4003,7 @@ class ComputeDiversityIncreaseVsRecommendationVolume(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -4040,7 +4030,7 @@ class ComputeDiversityIncreaseVsRecommendationVolume(luigi.Task):
             ),
             'recommendations': GenerateRecommendations(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -4109,7 +4099,7 @@ class PlotDiversityIncreaseVsRecommendationVolume(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     n_factors_values = luigi.parameter.ListParameter(
@@ -4134,7 +4124,7 @@ class PlotDiversityIncreaseVsRecommendationVolume(luigi.Task):
             tasks[n_factors] = ComputeDiversityIncreaseVsRecommendationVolume(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -4188,7 +4178,7 @@ class AnalyseUser(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -4219,7 +4209,7 @@ class AnalyseUser(luigi.Task):
             ),
             'recommendations': GenerateRecommendations(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -4227,7 +4217,7 @@ class AnalyseUser(luigi.Task):
             ),
             'recommendation_graph': BuildRecommendationGraph(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -4235,7 +4225,7 @@ class AnalyseUser(luigi.Task):
             ),
             'recommendation_with_listen': BuildRecommendationsWithListeningsGraph(
                 dataset=self.dataset,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -4309,7 +4299,7 @@ class AnalyseUser(luigi.Task):
 
         info = {
             'user_id': self.user_id,
-            'model_n_iterations': self.model_n_iterations,
+            'n_iterations': self.n_iterations,
             'model_n_factors': self.model_n_factors,
             'model_regularization': self.model_regularization,
             'model_user_fraction': self.model_user_fraction,
@@ -4363,7 +4353,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors_values = luigi.parameter.ListParameter(
@@ -4398,7 +4388,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsLatentFactors(luigi.Task):
             req[f'{n_factors}-recommendation_diversity'] = ComputeRecommendationDiversities(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -4457,7 +4447,7 @@ class ComputeDiversityIncreaseVsUserDiversityVsLatentFactors(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors_values = luigi.parameter.ListParameter(
@@ -4492,7 +4482,7 @@ class ComputeDiversityIncreaseVsUserDiversityVsLatentFactors(luigi.Task):
             req[f'{n_factors}-diversity_increase'] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -4552,7 +4542,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -4587,7 +4577,7 @@ class ComputeRecommendationDiversityVsUserDiversityVsRecoVolume(luigi.Task):
             req[f'{n_recommendations}-recommendation_diversity'] = ComputeRecommendationDiversities(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,
@@ -4647,7 +4637,7 @@ class ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(luigi.Task):
         default=2, description="The true diversity order"
     )
 
-    model_n_iterations = luigi.parameter.IntParameter(
+    n_iterations = luigi.parameter.IntParameter(
         default=10, description='Number of training iterations'
     )
     model_n_factors = luigi.parameter.IntParameter(
@@ -4682,7 +4672,7 @@ class ComputeDiversityIncreaseVsUserDiversityVsRecoVolume(luigi.Task):
             req[f'{n_recommendations}-diversity_increase'] = ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                model_n_iterations=self.model_n_iterations,
+                n_iterations=self.n_iterations,
                 model_n_factors=self.model_n_factors,
                 model_regularization=self.model_regularization,
                 model_user_fraction=self.model_user_fraction,

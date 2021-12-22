@@ -10,15 +10,33 @@ from automation.msd_dataset import *
 def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
     msd_dataset = MsdDataset(name, n_users=n_users)
 
+    split = dict(
+        name='leave-one-out',
+        n_fold=5,
+        row_fraction=.1
+    )
+
+    model = dict(
+        name='implicit-MF',
+        n_iterations=10,
+        n_factors=64,
+        regularization=10_000,
+        confidence_factor=40,
+    )
+
     tasks = [
-        GenerateTrainTest(dataset=msd_dataset),
-        TrainTestInfo(dataset=msd_dataset),
+        GenerateTrainTest(dataset=msd_dataset, split=split),
+        TrainTestInfo(dataset=msd_dataset, split=split),
         TrainModel(
             dataset=msd_dataset,
-            n_iterations=10,
-            n_factors=64,
-            regularization=10_000,
-            confidence_factor=40,
+            split=split,
+            model=model,
+            fold_id=2,
+        ),
+        PlotTrainLoss(
+            dataset=msd_dataset,
+            split=split,
+            model=model,
             fold_id=2,
         )
     ]
