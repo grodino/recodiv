@@ -1268,33 +1268,24 @@ class EvaluateModel(luigi.Task):
 
         del metrics
 
-# Deprecated
-
 
 class TuneModelHyperparameters(luigi.Task):
     """Evaluate a model on a hyperparameter grid and get the best combination
 
-    The best combination is defined as the one that yelds the best NDCG
+    Currently, only the 'implicit-MF' models are supported. Each given model
+    must only differ in the 'n_factors' and 'regularization' values.
     """
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
+    models = luigi.parameter.ListParameter(
+        description='The parameters of the model, passed to the model training function'
     )
-    model_n_factors_values = luigi.parameter.ListParameter(
-        description='List of numer of user/item latent factors'
-    )
-    model_regularization_values = luigi.parameter.FloatParameter(
-        description='List of regularization factors for the norm of user/item factors'
-    )
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-    model_confidence_factor = luigi.parameter.FloatParameter(
-        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1302,23 +1293,14 @@ class TuneModelHyperparameters(luigi.Task):
     )
 
     def requires(self):
-        grid = np.meshgrid(self.model_n_factors_values,
-                           self.model_regularization_values)
-        # Transform np.meshgrid into list od tuples, with each tuple
-        # representing a set of parameters to train the model against
-        self.hyperparameters = list(zip(*map(lambda x: x.flatten(), grid)))
-
         required = {}
 
-        for n_factors, regularization in self.hyperparameters:
-            required[(n_factors, regularization)] = EvaluateModel(
+        for model in self.models:
+            required[(model['n_factors'], model['regularization'])] = EvaluateModel(
                 dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                model_n_factors=n_factors,
-                model_regularization=regularization,
-                model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations,
-                model_confidence_factor=self.model_confidence_factor
+                model=model,
+                split=self.split,
+                n_recommendations=self.n_recommendations
             )
 
         return required
@@ -1326,38 +1308,66 @@ class TuneModelHyperparameters(luigi.Task):
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
 
-        return luigi.LocalTarget(
-            aggregated.joinpath(
-                f'{self.model_n_factors_values}factors_{self.model_regularization_values}reg_{self.n_recommendations}reco_{self.model_confidence_factor}c_model_eval.json'),
-            format=Nop
-        )
+        factors = list(set(model['n_factors'] for model in self.models))
+        regularizations = list(set(
+            model['regularization'] for model in self.models
+        ))
+        factors_str = ','.join(map(str, factors))
+        reg_str = ','.join(map(str, regularizations))
+
+        return {
+            'optimal': luigi.LocalTarget(
+                aggregated.joinpath('-'.join((
+                    f'{factors_str}_factors',
+                    f'{reg_str}_reg',
+                    f'{self.n_recommendations}_reco',
+                    f'{self.models[0]["confidence_factor"]}_weight',
+                    f'optimal_ndcg_param.json')),
+                ),
+                format=Nop
+            ),
+            'metrics': luigi.LocalTarget(
+                aggregated.joinpath('-'.join((
+                    f'{factors_str}_factors',
+                    f'{reg_str}_reg',
+                    f'{self.n_recommendations}_reco',
+                    f'{self.models[0]["confidence_factor"]}_weight',
+                    f'metrics.csv')),
+                ),
+                format=Nop
+            ),
+        }
 
     def run(self):
-        self.output().makedirs()
+        map(lambda x: x.makedirs(), self.output().values())
         metrics = pd.DataFrame()
 
         for (n_factors, regularization), metrics_file in self.input().items():
-            metric = pd.read_json(
-                metrics_file.path, orient='index').transpose()
+            metric = pd.DataFrame()
+            # Average over the different crossfolds
+            metric = metric.append(pd.read_json(
+                metrics_file.path, orient='index'
+            ).mean(axis=0), ignore_index=True)
+
             metric['n_factors'] = n_factors
             metric['regularization'] = regularization
 
             metrics = pd.concat((metrics, metric))
 
+        metrics = metrics.drop(columns='fold_id')
         metrics.set_index(['n_factors', 'regularization'], inplace=True)
-        optimal = {}
+        metrics.to_csv(self.output()['metrics'].path)
 
+        optimal = {}
         opt_n_factors, opt_regularization = metrics.index[metrics['ndcg'].argmax(
         )]
         optimal['n_factors'] = float(opt_n_factors)
         optimal['regularization'] = float(opt_regularization)
 
-        with open(self.output().path, 'w') as file:
+        with open(self.output()['optimal'].path, 'w') as file:
             json.dump(optimal, file, indent=4)
 
         del metrics
-
-# Deprecated
 
 
 class PlotModelTuning(luigi.Task):
@@ -1368,93 +1378,63 @@ class PlotModelTuning(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors_values = luigi.parameter.ListParameter(
-        description='List of numer of user/item latent factors'
-    )
-    model_regularization_values = luigi.parameter.FloatParameter(
-        description='List of regularization factors for the norm of user/item factors'
-    )
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-    model_confidence_factor = luigi.parameter.FloatParameter(
-        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    models = luigi.parameter.ListParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    tuning_metric = luigi.parameter.Parameter(
-        default='test_loss', description='Wich metric to plot for each n_factors-regularization pair'
-    )
-    tuning_best = luigi.parameter.ChoiceParameter(
-        default='min', choices=['min', 'max'], description='Best value for the tuning metric greater is better or lower is better'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
     )
 
+    tuning_metric = luigi.parameter.Parameter(
+        default='ndcg', description='Which metric to use to tune the hyperparameters'
+    )
+    tuning_best = luigi.parameter.ChoiceParameter(
+        choices=('min', 'max'),
+        default='max',
+        description='Whether the metric should be maximized or minimized'
+    )
+
     def requires(self):
-        grid = np.meshgrid(self.model_n_factors_values,
-                           self.model_regularization_values)
-        # Transform np.meshgrid into list od tuples, with each tuple
-        # representing a set of parameters to train the model against
-        self.hyperparameters = list(zip(*map(lambda x: x.flatten(), grid)))
-
-        required = {}
-
-        for n_factors, regularization in self.hyperparameters:
-            required[(n_factors, regularization)] = EvaluateModel(
-                dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                model_n_factors=n_factors,
-                model_regularization=regularization,
-                model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations
-            )
-
-        return required
+        return TuneModelHyperparameters(
+            dataset=self.dataset,
+            models=self.models,
+            split=self.split,
+            n_recommendations=self.n_recommendations,
+        )
 
     def output(self):
         aggregated = self.dataset.base_folder.joinpath(
             'aggregated').joinpath('figures')
 
-        return {
-            'png': luigi.LocalTarget(
-                aggregated.joinpath(
-                    f'{self.model_n_factors_values}'
-                    + f'factors_{self.model_regularization_values}'
-                    + f'reg_{self.n_recommendations}'
-                    + f'reco_{self.model_confidence_factor}'
-                    + f'c_model_eval_{self.tuning_metric}.png'),
-                format=Nop
+        factors = list(set(model['n_factors'] for model in self.models))
+        regularizations = list(set(
+            model['regularization'] for model in self.models
+        ))
+        factors_str = ','.join(map(str, factors))
+        reg_str = ','.join(map(str, regularizations))
+
+        return luigi.LocalTarget(
+            aggregated.joinpath('-'.join((
+                f'{factors_str}_factors',
+                f'{reg_str}_reg',
+                f'{self.n_recommendations}_reco',
+                f'{self.models[0]["confidence_factor"]}_weight',
+                f'{self.tuning_metric}_tuning.png')),
             ),
-            'latex': luigi.LocalTarget(
-                aggregated.joinpath(
-                    f'{self.model_n_factors_values}'
-                    + f'factors_{self.model_regularization_values}'
-                    + f'reg_{self.n_recommendations}'
-                    + f'reco_{self.model_confidence_factor}'
-                    + f'c_model_eval_{self.tuning_metric}.tex'),
-                format=Nop
-            )
-        }
+            format=Nop
+        )
 
     def run(self):
-        self.output()['png'].makedirs()
-        metrics = pd.DataFrame()
+        self.output().makedirs()
+        metrics = pd.read_csv(self.input()['metrics'].path)
 
-        for (n_factors, regularization), metrics_file in self.input().items():
-            metric = pd.read_json(
-                metrics_file.path, orient='index').transpose()
-            metric['n_factors'] = n_factors
-            metric['regularization'] = regularization
-
-            metrics = pd.concat((metrics, metric))
-
-        metrics_matrix = metrics.pivot(index='n_factors', columns='regularization')[
-            self.tuning_metric]
+        metrics_matrix = metrics.pivot(
+            index='n_factors', columns='regularization')[self.tuning_metric]
         metrics_matrix_n = metrics_matrix.to_numpy()
 
         fig, ax = pl.subplots()
@@ -1508,8 +1488,8 @@ class PlotModelTuning(luigi.Task):
         ax.set_ylabel('Number of latent factors')
         ax.set_xlabel('Regularization coefficient')
 
-        fig.savefig(self.output()['png'].path, format='png', dpi=300)
-        tikzplotlib.save(self.output()['latex'].path)
+        fig.savefig(self.output().path, format='png', dpi=300)
+        # tikzplotlib.save(self.output()['latex'].path)
 
         pl.clf()
 

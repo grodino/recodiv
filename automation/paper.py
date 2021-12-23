@@ -5,6 +5,7 @@ from luigi import task
 
 from automation.config import *
 from automation.msd_dataset import *
+from recodiv.utils import axes_to_grid
 
 
 def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
@@ -30,7 +31,7 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
             name='implicit-MF',
             n_iterations=10,
             n_factors=n_factor,
-            regularization=10_000,
+            regularization=100.0,
             confidence_factor=40,
         ))
 
@@ -80,7 +81,70 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
             models=models,
             split=split,
             n_recommendations=10
-        )
+        ),
+    ]
+
+    latent_factors = [8, 16, 32, 64, 128]
+    regularizations = [.1, 1, 10, 100, 1_000]
+    grid = axes_to_grid(latent_factors, regularizations)
+
+    models = []
+    for n_factors, regularization in grid:
+        models.append(dict(
+            name='implicit-MF',
+            n_iterations=10,
+            n_factors=int(n_factors),
+            regularization=float(regularization),
+            confidence_factor=40,
+        ))
+
+    tasks += [
+        TuneModelHyperparameters(
+            dataset=msd_dataset,
+            models=models,
+            split=split,
+            n_recommendations=10,
+        ),
+        PlotModelTuning(
+            dataset=msd_dataset,
+            models=models,
+            split=split,
+            n_recommendations=10,
+            tuning_metric='ndcg',
+            tuning_best='max',
+        ),
+        PlotModelTuning(
+            dataset=msd_dataset,
+            models=models,
+            split=split,
+            n_recommendations=10,
+            tuning_metric='recip_rank',
+            tuning_best='max',
+        ),
+        PlotModelTuning(
+            dataset=msd_dataset,
+            models=models,
+            split=split,
+            n_recommendations=10,
+            tuning_metric='recall',
+            tuning_best='max',
+        ),
+        PlotModelTuning(
+            dataset=msd_dataset,
+            models=models,
+            split=split,
+            n_recommendations=10,
+            tuning_metric='train_loss',
+            tuning_best='min',
+        ),
+        PlotModelTuning(
+            dataset=msd_dataset,
+            models=models,
+            split=split,
+            n_recommendations=10,
+            tuning_metric='test_loss',
+            tuning_best='min',
+        ),
     ]
 
     return tasks

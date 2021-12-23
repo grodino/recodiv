@@ -75,17 +75,13 @@ def train_model(
     # Encapsulate the model into a TopN recommender
     model = Recommender.adapt(als.ImplicitMF(
         n_factors,
+        reg=regularization,
         iterations=n_iterations,
         weight=confidence_factor,
         progress=tqdm,
         method='cg',
         use_ratings=True
     ))
-
-    # Compute the confidence values for user-item pairs
-    # No need now with the new lkpy version.
-    # TODO: remove
-    # train['rating'] = 1 + confidence_factor * train['rating']
 
     if save_training_loss:
         loss = np.zeros(n_iterations)

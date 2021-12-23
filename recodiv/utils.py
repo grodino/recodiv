@@ -181,3 +181,11 @@ def plot_histogram(values, min_quantile=.1, max_quantile=.9, n_bins=100, ax=None
     ax.text(mean + 1, 2, f'mean: {mean:.02f}', color='pink')
 
     return fig, ax
+
+
+def axes_to_grid(x: np.ndarray, y: np.ndarray) -> list[tuple[float, float]]:
+    """Creates a rectagular grid from x and y axes. The grid is returned as a
+    list of coordinates"""
+    grid = np.meshgrid(x, y)
+
+    return list(zip(*map(lambda z: z.flatten(), grid)))
