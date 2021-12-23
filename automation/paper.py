@@ -24,6 +24,16 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
         confidence_factor=40,
     )
 
+    models = []
+    for n_factor in [8, 16, 32, 64, 128]:
+        models.append(dict(
+            name='implicit-MF',
+            n_iterations=10,
+            n_factors=n_factor,
+            regularization=10_000,
+            confidence_factor=40,
+        ))
+
     tasks = [
         GenerateTrainTest(dataset=msd_dataset, split=split),
         TrainTestInfo(dataset=msd_dataset, split=split),
@@ -38,6 +48,38 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
             split=split,
             model=model,
             fold_id=2,
+        ),
+        GenerateRecommendations(
+            dataset=msd_dataset,
+            split=split,
+            model=model,
+            fold_id=2,
+            n_recommendations=10,
+        ),
+        GeneratePredictions(
+            dataset=msd_dataset,
+            split=split,
+            model=model,
+            fold_id=2,
+            train_predictions=True,
+        ),
+        EvaluateUserRecommendations(
+            dataset=msd_dataset,
+            model=model,
+            split=split,
+            n_recommendations=10
+        ),
+        EvaluateModel(
+            dataset=msd_dataset,
+            model=model,
+            split=split,
+            n_recommendations=10
+        ),
+        PlotModelEvaluationVsLatentFactors(
+            dataset=msd_dataset,
+            models=models,
+            split=split,
+            n_recommendations=10
         )
     ]
 

@@ -1,9 +1,11 @@
 import json
+from re import split
 import time
 import shutil
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
+from lenskit.algorithms.als import ImplicitMF
 
 import luigi
 from luigi import parameter
@@ -877,10 +879,10 @@ class TrainModel(luigi.Task):
         )
         model_path = self.dataset.base_folder.joinpath(
             f'models/{self.model["name"]}/{self.split["name"]}/' + model_str
-        )
+        ).joinpath(f'fold_{self.fold_id}/')
 
         out = {'model': luigi.LocalTarget(
-            model_path.joinpath(f'fold_{self.fold_id}.bpk')
+            model_path.joinpath('model.bpk')
         )}
 
         if self.save_training_loss == True:
@@ -896,14 +898,17 @@ class TrainModel(luigi.Task):
 
         train = pd.read_csv(self.input()[self.fold_id]['train'].path)
 
-        model, loss = train_model(
-            train,
-            n_factors=self.model['n_factors'],
-            n_iterations=self.model['n_iterations'],
-            confidence_factor=self.model['confidence_factor'],
-            regularization=self.model['regularization'],
-            save_training_loss=self.save_training_loss
-        )
+        if self.model['name'] == 'implicit-MF':
+            model, loss = train_model(
+                train,
+                n_factors=self.model['n_factors'],
+                n_iterations=self.model['n_iterations'],
+                confidence_factor=self.model['confidence_factor'],
+                regularization=self.model['regularization'],
+                save_training_loss=self.save_training_loss
+            )
+        else:
+            raise NotImplementedError('The asked model is not implemented')
 
         binpickle.dump(model, self.output()['model'].path)
 
@@ -945,7 +950,7 @@ class PlotTrainLoss(luigi.Task):
         model = Path(self.input()['model'].path).parent
 
         return luigi.LocalTarget(
-            model.joinpath(f'fold_{self.fold_id}-training-loss-.png'),
+            model.joinpath(f'fold_{self.fold_id}-training-loss.png'),
             format=Nop
         )
 
@@ -962,7 +967,6 @@ class PlotTrainLoss(luigi.Task):
         fig.savefig(self.output().path, format='png', dpi=300)
 
 
-# TODO: think how we compute the recommendations generation
 class GenerateRecommendations(luigi.Task):
     """Generate recommendations for users in test dataset with a given model"""
 
@@ -970,24 +974,12 @@ class GenerateRecommendations(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-    model_confidence_factor = luigi.parameter.FloatParameter(
-        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    row_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of items that are selected for testing for each user in the test set'
-    )
-    n_fold = luigi.parameter.IntParameter(
-        default=5, description='Number of user partitions, used in a leave 1 out validation scheme'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
     fold_id = luigi.parameter.IntParameter(
         default=0, description='Select the fold_id\'th train/test pair'
@@ -1001,17 +993,13 @@ class GenerateRecommendations(luigi.Task):
         return {
             'data': GenerateTrainTest(
                 dataset=self.dataset,
-                user_fraction=self.model_user_fraction
+                split=self.split
             ),
             'model': TrainModel(
                 dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                n_factors=self.model_n_factors,
-                regularization=self.model_regularization,
+                model=self.model,
                 save_training_loss=False,
-                confidence_factor=self.model_confidence_factor,
-                row_fraction=self.row_fraction,
-                n_fold=self.n_fold,
+                split=self.split,
                 fold_id=self.fold_id
             )
         }
@@ -1027,10 +1015,8 @@ class GenerateRecommendations(luigi.Task):
         self.output().makedirs()
 
         model = binpickle.load(self.input()['model']['model'].path)
-        ratings = pd.read_csv(self.input()['data']['test'].path)
+        ratings = pd.read_csv(self.input()['data'][self.fold_id]['test'].path)
 
-        # TODO: change the generate_recomendations to include only the relevant
-        # fold
         generate_recommendations(
             model,
             ratings,
@@ -1047,21 +1033,15 @@ class GeneratePredictions(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-    model_confidence_factor = luigi.parameter.FloatParameter(
-        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
+    )
+    fold_id = luigi.parameter.IntParameter(
+        default=0, description='Select the fold_id\'th train/test pair'
     )
 
     train_predictions = luigi.parameter.BoolParameter(
@@ -1072,16 +1052,14 @@ class GeneratePredictions(luigi.Task):
         return {
             'data': GenerateTrainTest(
                 dataset=self.dataset,
-                user_fraction=self.model_user_fraction
+                split=self.split
             ),
             'model': TrainModel(
                 dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                n_factors=self.model_n_factors,
-                regularization=self.model_regularization,
-                user_fraction=self.model_user_fraction,
+                model=self.model,
                 save_training_loss=False,
-                confidence_factor=self.model_confidence_factor
+                split=self.split,
+                fold_id=self.fold_id
             )
         }
 
@@ -1102,7 +1080,8 @@ class GeneratePredictions(luigi.Task):
     def run(self):
         self.output()['test'].makedirs()
 
-        test_user_item = pd.read_csv(self.input()['data']['test'].path)
+        test_user_item = pd.read_csv(
+            self.input()['data'][self.fold_id]['test'].path)
         model = binpickle.load(self.input()['model']['model'].path)
 
         generate_predictions(
@@ -1111,7 +1090,8 @@ class GeneratePredictions(luigi.Task):
         ).to_csv(self.output()['test'].path, index=False)
 
         if self.train_predictions:
-            train_user_item = pd.read_csv(self.input()['data']['train'].path)
+            train_user_item = pd.read_csv(
+                self.input()['data'][self.fold_id]['train'].path)
             generate_predictions(
                 model,
                 train_user_item,
@@ -1123,27 +1103,19 @@ class GeneratePredictions(luigi.Task):
 
 
 class EvaluateUserRecommendations(luigi.Task):
-    """Compute evaluations metrics on a trained model"""
+    """Compute evaluations metrics on a trained model over all the crossfolds,
+    user by user"""
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-    model_confidence_factor = luigi.parameter.FloatParameter(
-        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1151,148 +1123,71 @@ class EvaluateUserRecommendations(luigi.Task):
     )
 
     def requires(self):
-        return {
-            'recommendations': GenerateRecommendations(
-                dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations,
-                model_confidence_factor=self.model_confidence_factor
-            ),
-            'dataset': GenerateTrainTest(
-                dataset=self.dataset,
-                user_fraction=self.model_user_fraction
-            )
-        }
+        req = []
+        for fold_id in range(self.split['n_fold']):
+            req.append({
+                'recommendations': GenerateRecommendations(
+                    dataset=self.dataset,
+                    model=self.model,
+                    split=self.split,
+                    fold_id=fold_id,
+                    n_recommendations=self.n_recommendations,
+                ),
+                'split': GenerateTrainTest(
+                    dataset=self.dataset,
+                    split=self.split
+                )
+            })
+
+        return req
 
     def output(self):
-        model = Path(self.input()['recommendations'].path).parent
+        model = Path(self.input()[0]['recommendations'].path).parent.parent
 
         return luigi.LocalTarget(
             model.joinpath(
-                f'users_eval_{self.n_recommendations}-recommendations.csv'),
+                f'users_eval-{self.n_recommendations}_reco.csv'),
             format=Nop
         )
 
     def run(self):
         self.output().makedirs()
 
-        recommendations = pd.read_csv(self.input()['recommendations'].path)
-        test = pd.read_csv(self.input()['dataset']['test'].path)
-
-        # # NOTE : Issue appears when the two following condition is met :
-        # #   - a user had only one listening and it is put in the test set
-        # # NOTE : seems not to be necessary anymore thanks to the better train/test sampling
-        # #
-        # # Then, the model will not know the user, thus will not be able to
-        # # recommend songs to this user. Therefore, to avoid issues, we simply
-        # # discard users with no recommendations from the test set
-        # recommendations.set_index('user', inplace=True)
-        # test.set_index('user', inplace=True)
-
-        # missing = test.index.difference(recommendations.index)
-        # common = test.index.intersection(recommendations.index).unique()
-        # print(f'In test set but not recommended : {missing}')
-
-        # recommendations = recommendations.loc[common].reset_index()
-        # test.reset_index(inplace=True)
-
         metrics_names = ['ndcg', 'precision', 'recip_rank', 'recall']
-        metrics = evaluate_model_recommendations(
-            recommendations,
-            test,
-            metrics_names
-        )[metrics_names].reset_index()
+        metrics = pd.DataFrame()
+
+        for fold_id, data in enumerate(self.input()):
+            recommendations = pd.read_csv(data['recommendations'].path)
+            test = pd.read_csv(data['split'][fold_id]['test'].path)
+
+            fold_metrics = evaluate_model_recommendations(
+                recommendations,
+                test,
+                metrics_names
+            )[metrics_names].reset_index()
+            fold_metrics['fold_id'] = fold_id
+
+            metrics = metrics.append(fold_metrics)
 
         metrics.to_csv(self.output().path, index=False)
 
         del recommendations, test, metrics
 
 
-class PlotUserEvaluationHistogram(luigi.Task):
-    """Plot the histogram of an evaluation metric among all users"""
-
-    dataset: Dataset = luigi.parameter.Parameter(
-        description='Instance of the Dataset class or subclasses'
-    )
-
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-    model_confidence_factor = luigi.parameter.FloatParameter(
-        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
-    )
-
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
-    n_recommendations = luigi.parameter.IntParameter(
-        default=50, description='Number of recommendation to generate per user'
-    )
-
-    def requires(self):
-        return EvaluateUserRecommendations(
-            dataset=self.dataset,
-            n_iterations=self.n_iterations,
-            model_n_factors=self.model_n_factors,
-            model_regularization=self.model_regularization,
-            model_user_fraction=self.model_user_fraction,
-            model_confidence_factor=self.model_confidence_factor,
-            n_recommendations=self.n_recommendations
-        )
-
-    def output(self):
-        model = Path(self.input().path).parent.joinpath('figures/')
-
-        return luigi.LocalTarget(
-            model.joinpath(
-                f'users_eval_{self.n_recommendations}-recommendations_histogram.png'),
-            format=Nop
-        )
-
-    def run(self):
-        self.output().makedirs()
-
-        metrics = pd.read_csv(self.input().path)
-
-        fig, ax = plot_histogram(
-            metrics['ndcg'].to_numpy(), min_quantile=0, max_quantile=0.99)
-        ax.set_xlabel('NDCG value')
-        ax.set_ylabel('User count')
-        fig.savefig(self.output().path, format='png', dpi=300)
-
-
 class EvaluateModel(luigi.Task):
-    """Compute evaluations metrics on a trained model"""
+    """Compute evaluations metrics on a trained model over all the crossfolds,
+    averaged on all the users"""
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-    model_confidence_factor = luigi.parameter.FloatParameter(
-        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1300,61 +1195,70 @@ class EvaluateModel(luigi.Task):
     )
 
     def requires(self):
-        return {
-            'model': TrainModel(
-                dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                n_factors=self.model_n_factors,
-                regularization=self.model_regularization,
-                user_fraction=self.model_user_fraction,
-                save_training_loss=False,
-                confidence_factor=self.model_confidence_factor
-            ),
-            'predictions': GeneratePredictions(
-                dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
-                train_predictions=True,
-                model_confidence_factor=self.model_confidence_factor
-            ),
+        req = {
             'user_eval': EvaluateUserRecommendations(
                 dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
-                model_confidence_factor=self.model_confidence_factor,
+                model=self.model,
+                split=self.split,
                 n_recommendations=self.n_recommendations
             )
         }
+        req['folds'] = []
+
+        for fold_id in range(self.split['n_fold']):
+            req['folds'].append({
+                'model': TrainModel(
+                    dataset=self.dataset,
+                    model=self.model,
+                    split=self.split,
+                    fold_id=fold_id,
+                    save_training_loss=False,
+                ),
+                'predictions': GeneratePredictions(
+                    dataset=self.dataset,
+                    model=self.model,
+                    split=self.split,
+                    train_predictions=True,
+                    fold_id=fold_id,
+                ),
+            })
+
+        return req
 
     def output(self):
-        model = Path(self.input()['model']['model'].path).parent
+        model_path = Path(self.input()['user_eval'].path).parent
 
         return luigi.LocalTarget(
-            model.joinpath(
-                f'{self.n_recommendations}-recommendations_model_eval.json'),
+            model_path.joinpath(
+                f'model_eval-{self.n_recommendations}_reco.json'),
             format=Nop
         )
 
     def run(self):
         self.output().makedirs()
+        user_metrics: pd.DataFrame = pd.read_csv(
+            self.input()['user_eval'].path)
+        user_metrics = user_metrics.set_index('user')
+        metrics = pd.DataFrame()
 
-        test_predictions = pd.read_csv(
-            self.input()['predictions']['test'].path)
-        train_predictions = pd.read_csv(
-            self.input()['predictions']['train'].path)
+        for fold_id, fold in enumerate(self.input()['folds']):
+            # Average the user metrics over the users
+            fold_metrics = user_metrics[user_metrics['fold_id'] == fold_id]
+            fold_metrics = fold_metrics.mean()
 
-        model = binpickle.load(self.input()['model']['model'].path)
+            test_predictions = pd.read_csv(
+                fold['predictions']['test'].path)
+            train_predictions = pd.read_csv(
+                fold['predictions']['train'].path)
 
-        metrics: pd.DataFrame = pd.read_csv(self.input()['user_eval'].path)
-        metrics = metrics.set_index('user')
-        metrics = metrics.mean()
+            model = binpickle.load(fold['model']['model'].path)
 
-        metrics['test_loss'] = evaluate_model_loss(model, test_predictions)
-        metrics['train_loss'] = evaluate_model_loss(model, train_predictions)
+            fold_metrics['test_loss'] = evaluate_model_loss(
+                model, test_predictions)
+            fold_metrics['train_loss'] = evaluate_model_loss(
+                model, train_predictions)
+
+            metrics = metrics.append(fold_metrics, ignore_index=True)
 
         metrics.to_json(
             self.output().path,
@@ -1363,6 +1267,8 @@ class EvaluateModel(luigi.Task):
         )
 
         del metrics
+
+# Deprecated
 
 
 class TuneModelHyperparameters(luigi.Task):
@@ -1450,6 +1356,8 @@ class TuneModelHyperparameters(luigi.Task):
             json.dump(optimal, file, indent=4)
 
         del metrics
+
+# Deprecated
 
 
 class PlotModelTuning(luigi.Task):
@@ -1609,27 +1517,22 @@ class PlotModelTuning(luigi.Task):
 
 
 class PlotModelEvaluationVsLatentFactors(luigi.Task):
-    """Compute model evaluation metrics against the number of factors"""
+    """Compute model evaluation metrics against the number of factors
+
+    The models in the given list must be implicit-MF models and differ only by
+    their number of factors.
+    """
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors_values = luigi.parameter.ListParameter(
-        description='List of numer of user/item latent factors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-    model_confidence_factor = luigi.parameter.FloatParameter(
-        default=40.0, description='The multplicative factor used to extract confidence values from listenings counts'
+    models = luigi.parameter.ListParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1639,13 +1542,11 @@ class PlotModelEvaluationVsLatentFactors(luigi.Task):
     def requires(self):
         req = {}
 
-        for n_factors in self.model_n_factors_values:
-            req[n_factors] = EvaluateModel(
+        for model in self.models:
+            req[model['n_factors']] = EvaluateModel(
                 dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                model_n_factors=n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
+                model=model,
+                split=self.split,
                 n_recommendations=self.n_recommendations
             )
 
@@ -1655,34 +1556,44 @@ class PlotModelEvaluationVsLatentFactors(luigi.Task):
         aggregated = self.dataset.base_folder.joinpath(
             'aggregated').joinpath('figures')
 
+        factors_str = ','.join(str(model['n_factors'])
+                               for model in self.models)
+
         return luigi.LocalTarget(
-            aggregated.joinpath(
-                f'{self.model_n_factors_values}'
-                + f'factors_{self.model_regularization}'
-                + f'reg_{self.n_recommendations}'
-                + f'reco_{self.model_confidence_factor}'
-                + f'model_eval.png'),
+            aggregated.joinpath('-'.join((
+                f'{factors_str}_factors',
+                f'{self.models[0]["regularization"]}_reg',
+                f'{self.n_recommendations}_reco',
+                f'{self.models[0]["confidence_factor"]}_weight',
+                f'model_eval.png')),
+            ),
             format=Nop
         )
 
     def run(self):
         self.output().makedirs()
 
+        n_factors_values = [model['n_factors'] for model in self.models]
+
         data: pd.DataFrame = pd.DataFrame(
-            index=self.model_n_factors_values,
-            columns=['NDCG', 'precision']
+            index=n_factors_values,
         )
 
-        for n_factors in self.model_n_factors_values:
+        for n_factors in n_factors_values:
             metric = pd.read_json(
                 self.input()[n_factors].path,
                 orient='index'
-            ).transpose()
+            )
 
-            data.loc[n_factors, 'NDCG'] = float(metric['ndcg'][0])
-            data.loc[n_factors, 'precision'] = float(metric['precision'][0])
-            data.loc[n_factors, 'recip_rank'] = float(metric['recip_rank'][0])
-            data.loc[n_factors, 'test_loss'] = float(metric['test_loss'][0])
+            data.loc[n_factors, 'ndcg'] = float(metric['ndcg'].mean())
+            data.loc[n_factors, 'precision'] = float(
+                metric['precision'][0].mean())
+            data.loc[n_factors, 'recip_rank'] = float(
+                metric['recip_rank'][0].mean())
+            data.loc[n_factors, 'test_loss'] = float(
+                metric['test_loss'][0].mean())
+            data.loc[n_factors, 'train_loss'] = float(
+                metric['train_loss'][0].mean())
 
         data = data.subtract(data.min())
         data = data.divide(data.max())

@@ -130,8 +130,6 @@ def evaluate_model_recommendations(recommendations, test, metrics) -> pd.DataFra
     """
 
     analysis = topn.RecListAnalysis(n_jobs=20)
-    users = test.user.unique()
-    rec_users = recommendations['user'].unique()
 
     for metric_name in metrics:
         analysis.add_metric(METRICS[metric_name])
@@ -139,7 +137,8 @@ def evaluate_model_recommendations(recommendations, test, metrics) -> pd.DataFra
     return analysis.compute(recommendations, test)
 
 
-def evaluate_model_loss(model, predictions):
+def evaluate_model_loss(model, predictions) -> float:
+    """Evalutates the model loss on  given set of predictions"""
 
     # do not consider the user-item pairs where no prediction could be generated
     # (ie the items not in train set)
