@@ -10,7 +10,12 @@ from recodiv.utils import axes_to_grid
 
 def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
     """Tasks used to develop the models and test things out"""
-    msd_dataset = MsdDataset(name, n_users=n_users)
+
+    msd_dataset = MsdDataset(
+        name,
+        n_users=n_users,
+        min_item_volume=10
+    )
 
     split = dict(
         name='leave-one-out',
@@ -68,12 +73,6 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 split=split,
                 n_recommendations=10
             ),
-            PlotModelEvaluationVsLatentFactors(
-                dataset=msd_dataset,
-                models=models,
-                split=split,
-                n_recommendations=10
-            ),
         ]
 
     def test_hyperparameter_grid():
@@ -112,28 +111,33 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
 
         return tasks
 
-    models = []
-    for n_factor in [8, 16, 32, 64, 128]:
-        models.append(dict(
-            name='implicit-MF',
-            n_iterations=10,
-            n_factors=n_factor,
-            regularization=100.0,
-            confidence_factor=40,
-        ))
+    # models = []
+    # for n_factor in [8, 16, 32, 64, 128]:
+    #     models.append(dict(
+    #         name='implicit-MF',
+    #         n_iterations=10,
+    #         n_factors=n_factor,
+    #         regularization=100.0,
+    #         confidence_factor=40,
+    #     ))
 
-    tasks = [
-        PlotRecommendationDiversityVsLatentFactors(
-            dataset=msd_dataset,
-            models=models,
-            split=split,
-            fold_id=2,
-            alpha=2,
-            n_recommendations_values=[10, ]
-        )
-    ]
+    # tasks = [
+    #     PlotRecommendationDiversityVsLatentFactors(
+    #         dataset=msd_dataset,
+    #         models=models,
+    #         split=split,
+    #         fold_id=2,
+    #         alpha=2,
+    #         n_recommendations_values=[10, ]
+    #     )
+    # ]
 
-    return test_hyperparameter_grid() + tasks
+    # return test_hyperparameter_grid() + tasks
+    return [
+        DatasetInfo(dataset=msd_dataset),
+        GenerateTrainTest(dataset=msd_dataset, split=split),
+        TrainTestInfo(dataset=msd_dataset, split=split),
+    ] + test_single_model()
 
 
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:

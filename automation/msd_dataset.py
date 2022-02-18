@@ -39,8 +39,6 @@ from recodiv.triversity.graph import IndividualHerfindahlDiversities
 
 # Path to generated folder
 GENERATED = Path('generated/')
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 ################################################################################
@@ -49,7 +47,7 @@ logger.setLevel(logging.DEBUG)
 class Dataset(ABC):
     """Representation of a dataset
 
-    All dataset classes must have the following properties: 
+    All dataset classes must have the following properties:
         - user_item : The users -> items links as a pd.DataFrame(columns=['user', 'item', 'rating']).to_csv()
         - item_tag : The items -> tags links as a pd.DataFrame(columns=['item', 'tag', 'weight']).to_csv()
         - IMPORT_FOLDER : where to find the dataset folder
@@ -76,13 +74,20 @@ class MsdDataset(Dataset):
     IMPORT_FOLDER = 'data/million_songs_dataset/'
     NAME = 'MSD-confidence-corrected'
 
-    def __init__(self, name, *args, n_users=0,  **kwargs):
+    def __init__(self,
+                 name,
+                 *args,
+                 n_users=0,
+                 min_user_volume=10,
+                 min_item_volume=10,
+                 **kwargs):
         super().__init__(*args, **kwargs)
 
         self.NAME = name
         self.base_folder = GENERATED.joinpath(f'dataset-{self.NAME}')
         self.data_folder = self.base_folder.joinpath('data/')
         self.n_users = int(n_users)
+        self.min_item_volume = min_item_volume
 
         self.user_item = None
         self.item_tag = None
@@ -95,10 +100,10 @@ class MsdDataset(Dataset):
         songs are imported
         """
 
-        logger.info('Importing dataset')
+        print('Importing dataset')
         t = time.perf_counter()
 
-        logger.debug('Reading user->item links file')
+        print('Reading user->item links file')
         user_item = pd.read_csv(
             Path(self.IMPORT_FOLDER).joinpath('msd_users.txt'),
             sep=' ',
@@ -110,28 +115,47 @@ class MsdDataset(Dataset):
                 'item': np.str,
                 'rating': np.float
             },
-            # nrows=1_000_000,
             engine='c'
         )[['user', 'item', 'rating']]
 
-        logger.debug('Reading item->tag links file')
-        item_tag = pd.read_csv(
-            Path(self.IMPORT_FOLDER).joinpath('msd_tags.txt'),
-            sep=' ',
-            names=['node1_level', 'item', 'node2_level', 'tag', 'weight'],
-            dtype={
-                'node1_level': np.int,
-                'node2_level': np.int,
-                'item': np.str,
-                'tag': np.str,
-                'weight': np.int
-            },
-            engine='c'
-        )[['item', 'tag', 'weight']]
+        if self.min_item_volume > 0:
+            print('removing invalid items')
+            # For each item, count the number of users who listen to it
+            item_volume = user_item[['item', 'user']] \
+                .groupby(by='item') \
+                .count() \
+                .rename(columns={'user': 'volume'}) \
+                .reset_index()
+
+            # Detect the items that don't have a high enought volume
+            invalid_items = item_volume.loc[
+                item_volume.volume < self.min_item_volume
+            ]['item']
+
+            # And delete them
+            user_item = user_item \
+                .set_index('item') \
+                .drop(invalid_items) \
+                .reset_index()
+
+            print('Reading item->tag links file')
+            item_tag = pd.read_csv(
+                Path(self.IMPORT_FOLDER).joinpath('msd_tags.txt'),
+                sep=' ',
+                names=['node1_level', 'item', 'node2_level', 'tag', 'weight'],
+                dtype={
+                    'node1_level': np.int,
+                    'node2_level': np.int,
+                    'item': np.str,
+                    'tag': np.str,
+                    'weight': np.int
+                },
+                engine='c'
+            )[['item', 'tag', 'weight']]
 
         # Select a portion of the dataset
         if self.n_users > 0:
-            logger.debug(f'Sampling {self.n_users} users')
+            print(f'Sampling {self.n_users} users')
             rng = np.random.default_rng()
 
             users = user_item['user'].unique()
@@ -143,14 +167,14 @@ class MsdDataset(Dataset):
 
             # Only keep songs that are listened to
             # Too slow when importing the whole dataset
-            logger.debug(f'Removing songs not listened to')
+            print(f'Removing songs not listened to')
             item_tag.set_index('item', inplace=True)
             item_tag = item_tag \
                 .loc[user_item['item']] \
                 .reset_index() \
                 .drop_duplicates()
 
-        logger.debug(
+        print(
             f'Finished importing dataset in {time.perf_counter() - t}')
 
         self.user_item = user_item
@@ -498,6 +522,43 @@ class GenerateTrainTest(luigi.Task):
 
         if self.split['name'] == 'leave-one-out':
             for i, (train, test) in enumerate(split_dataset(user_item, self.split['row_fraction'])):
+                # Find out the items and users that are in test set but not in
+                # train set set (they would cause cold start issues)
+                isolated_users = np.setdiff1d(
+                    test['user'].unique(),
+                    train['user'].unique()
+                )
+                isolated_items = np.setdiff1d(
+                    test['item'].unique(),
+                    train['item'].unique()
+                )
+
+                n_test_users = test['user'].unique().shape[0]
+                n_train_users = train['user'].unique().shape[0]
+                n_isolated_users = isolated_users.shape[0]
+                # Thanks to the splitting procedure, we should not have isolated
+                # users
+                assert(n_isolated_users == 0)
+                print(
+                    f'#isolated users in fold {i}: {n_isolated_users} '
+                    f'| #test users {n_test_users} ({100 * n_isolated_users/n_test_users:0.2f}%) '
+                    f'| #train users {n_train_users} ({100 * n_isolated_users/n_train_users:0.2f}%) '
+                )
+                n_test_items = test['item'].unique().shape[0]
+                n_train_items = train['item'].unique().shape[0]
+                n_isolated_items = isolated_items.shape[0]
+                print(
+                    f'#isolated items in fold {i}: {n_isolated_items} '
+                    f'| #test items {n_test_items} ({100 * n_isolated_items/n_test_items:0.2f}%) '
+                    f'| #train items {n_train_items} ({100 * n_isolated_items/n_train_items:0.2f}%) '
+                )
+
+                # Remove these users and items and the corresponding
+                # interactions from the test set
+                test = test.set_index('item') \
+                    .drop(isolated_items) \
+                    .reset_index()
+
                 train.to_csv(self.output()[i]['train'].path, index=False)
                 test.to_csv(self.output()[i]['test'].path, index=False)
 
@@ -1092,6 +1153,7 @@ class GeneratePredictions(luigi.Task):
         if self.train_predictions:
             train_user_item = pd.read_csv(
                 self.input()['data'][self.fold_id]['train'].path)
+
             generate_predictions(
                 model,
                 train_user_item,
@@ -1175,7 +1237,7 @@ class EvaluateUserRecommendations(luigi.Task):
 
 
 class EvaluateModel(luigi.Task):
-    """Compute evaluations metrics on a trained model over all the crossfolds,
+    """Compute evaluations metrics on a trained model over each crossfolds
     averaged on all the users
 
     TODO: create an Avg version of this task
@@ -1204,8 +1266,9 @@ class EvaluateModel(luigi.Task):
                 model=self.model,
                 split=self.split,
                 n_recommendations=self.n_recommendations
-            )
+            ),
         }
+
         req['folds'] = []
 
         for fold_id in range(self.split['n_fold']):
@@ -1242,6 +1305,7 @@ class EvaluateModel(luigi.Task):
         user_metrics: pd.DataFrame = pd.read_csv(
             self.input()['user_eval'].path)
         user_metrics = user_metrics.set_index('user')
+
         metrics = pd.DataFrame()
 
         for fold_id, fold in enumerate(self.input()['folds']):
@@ -1254,8 +1318,10 @@ class EvaluateModel(luigi.Task):
             train_predictions = pd.read_csv(
                 fold['predictions']['train'].path)
 
+            # Get the model trained with this fold
             model = binpickle.load(fold['model']['model'].path)
 
+            # Evaluate the model loss on train and test data
             fold_metrics['test_loss'] = evaluate_model_loss(
                 model, test_predictions)
             fold_metrics['train_loss'] = evaluate_model_loss(

@@ -11,6 +11,7 @@ from lenskit import batch
 from lenskit import crossfold as xf
 from lenskit.algorithms import als
 from lenskit.algorithms import Recommender
+from lenskit.algorithms.ranking import TopN
 
 METRICS = {
     'ndcg': topn.ndcg,
@@ -129,7 +130,7 @@ def evaluate_model_recommendations(recommendations, test, metrics) -> pd.DataFra
     return analysis.compute(recommendations, test)
 
 
-def evaluate_model_loss(model, predictions) -> float:
+def evaluate_model_loss(model: TopN, predictions) -> float:
     """Evalutates the model loss on  given set of predictions"""
 
     # do not consider the user-item pairs where no prediction could be generated
@@ -144,7 +145,7 @@ def evaluate_model_loss(model, predictions) -> float:
         + np.linalg.norm(model.predictor.item_features_, 'fro')
     )
 
-    return confidence @ (1 - prediction)**2 + reg
+    return np.dot(confidence, (1 - prediction)**2) + reg
 
 
 def rank_to_weight(user_item, recommendations):
