@@ -1,7 +1,7 @@
 from typing import List
 
 import luigi
-from luigi import task
+import numpy as np
 
 from automation.config import *
 from automation.msd_dataset import *
@@ -9,6 +9,7 @@ from recodiv.utils import axes_to_grid
 
 
 def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
+    """Tasks used to develop the models and test things out"""
     msd_dataset = MsdDataset(name, n_users=n_users)
 
     split = dict(
@@ -17,13 +18,99 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
         row_fraction=.1
     )
 
-    model = dict(
-        name='implicit-MF',
-        n_iterations=10,
-        n_factors=64,
-        regularization=10_000,
-        confidence_factor=40,
-    )
+    def test_single_model():
+        model = dict(
+            name='implicit-MF',
+            n_iterations=10,
+            n_factors=64,
+            regularization=100.0,
+            confidence_factor=40,
+        )
+
+        return [
+            GenerateTrainTest(dataset=msd_dataset, split=split),
+            TrainTestInfo(dataset=msd_dataset, split=split),
+            TrainModel(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                fold_id=2,
+            ),
+            PlotTrainLoss(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                fold_id=2,
+            ),
+            GenerateRecommendations(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                fold_id=2,
+                n_recommendations=10,
+            ),
+            GeneratePredictions(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                fold_id=2,
+                train_predictions=True,
+            ),
+            EvaluateUserRecommendations(
+                dataset=msd_dataset,
+                model=model,
+                split=split,
+                n_recommendations=10
+            ),
+            EvaluateModel(
+                dataset=msd_dataset,
+                model=model,
+                split=split,
+                n_recommendations=10
+            ),
+            PlotModelEvaluationVsLatentFactors(
+                dataset=msd_dataset,
+                models=models,
+                split=split,
+                n_recommendations=10
+            ),
+        ]
+
+    def test_hyperparameter_grid():
+        latent_factors = np.logspace(3, 7, 5, base=2, dtype=int)
+        regularizations = np.logspace(-3, 3, 7)
+        grid = axes_to_grid(latent_factors, regularizations)
+
+        models = []
+        for n_factors, regularization in grid:
+            models.append(dict(
+                name='implicit-MF',
+                n_iterations=10,
+                n_factors=int(n_factors),
+                regularization=float(regularization),
+                confidence_factor=40,
+            ))
+
+        metrics = {
+            'ndcg': 'max',
+            'recip_rank': 'max',
+            'recall': 'max',
+            'train_loss': 'min',
+            'test_loss': 'min'
+        }
+        tasks = []
+
+        for metric, tuning_best in metrics.items():
+            tasks.append(PlotModelTuning(
+                dataset=msd_dataset,
+                models=models,
+                split=split,
+                n_recommendations=10,
+                tuning_metric=metric,
+                tuning_best=tuning_best,
+            ))
+
+        return tasks
 
     models = []
     for n_factor in [8, 16, 32, 64, 128]:
@@ -36,118 +123,17 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
         ))
 
     tasks = [
-        GenerateTrainTest(dataset=msd_dataset, split=split),
-        TrainTestInfo(dataset=msd_dataset, split=split),
-        TrainModel(
-            dataset=msd_dataset,
-            split=split,
-            model=model,
-            fold_id=2,
-        ),
-        PlotTrainLoss(
-            dataset=msd_dataset,
-            split=split,
-            model=model,
-            fold_id=2,
-        ),
-        GenerateRecommendations(
-            dataset=msd_dataset,
-            split=split,
-            model=model,
-            fold_id=2,
-            n_recommendations=10,
-        ),
-        GeneratePredictions(
-            dataset=msd_dataset,
-            split=split,
-            model=model,
-            fold_id=2,
-            train_predictions=True,
-        ),
-        EvaluateUserRecommendations(
-            dataset=msd_dataset,
-            model=model,
-            split=split,
-            n_recommendations=10
-        ),
-        EvaluateModel(
-            dataset=msd_dataset,
-            model=model,
-            split=split,
-            n_recommendations=10
-        ),
-        PlotModelEvaluationVsLatentFactors(
+        PlotRecommendationDiversityVsLatentFactors(
             dataset=msd_dataset,
             models=models,
             split=split,
-            n_recommendations=10
-        ),
+            fold_id=2,
+            alpha=2,
+            n_recommendations_values=[10, ]
+        )
     ]
 
-    latent_factors = [8, 16, 32, 64, 128]
-    regularizations = [.1, 1, 10, 100, 1_000]
-    grid = axes_to_grid(latent_factors, regularizations)
-
-    models = []
-    for n_factors, regularization in grid:
-        models.append(dict(
-            name='implicit-MF',
-            n_iterations=10,
-            n_factors=int(n_factors),
-            regularization=float(regularization),
-            confidence_factor=40,
-        ))
-
-    tasks += [
-        TuneModelHyperparameters(
-            dataset=msd_dataset,
-            models=models,
-            split=split,
-            n_recommendations=10,
-        ),
-        PlotModelTuning(
-            dataset=msd_dataset,
-            models=models,
-            split=split,
-            n_recommendations=10,
-            tuning_metric='ndcg',
-            tuning_best='max',
-        ),
-        PlotModelTuning(
-            dataset=msd_dataset,
-            models=models,
-            split=split,
-            n_recommendations=10,
-            tuning_metric='recip_rank',
-            tuning_best='max',
-        ),
-        PlotModelTuning(
-            dataset=msd_dataset,
-            models=models,
-            split=split,
-            n_recommendations=10,
-            tuning_metric='recall',
-            tuning_best='max',
-        ),
-        PlotModelTuning(
-            dataset=msd_dataset,
-            models=models,
-            split=split,
-            n_recommendations=10,
-            tuning_metric='train_loss',
-            tuning_best='min',
-        ),
-        PlotModelTuning(
-            dataset=msd_dataset,
-            models=models,
-            split=split,
-            n_recommendations=10,
-            tuning_metric='test_loss',
-            tuning_best='min',
-        ),
-    ]
-
-    return tasks
+    return test_hyperparameter_grid() + tasks
 
 
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:

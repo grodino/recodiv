@@ -1,5 +1,5 @@
-from collections.abc import Iterator
 from typing import Tuple
+from collections.abc import Iterator
 
 import numba as nb
 import numpy as np
@@ -43,8 +43,6 @@ def split_dataset(ratings: pd.DataFrame, row_fraction: float = .1, n_folds: int 
     [type] [description]
     """
 
-    n_users = len(ratings['user'].unique())
-
     # see [lkpy documentation](https://lkpy.readthedocs.io/en/stable/crossfold.html)
     # Here the sampling is as follow:
     #   - Sample test_fraction * n_total users
@@ -57,8 +55,6 @@ def split_dataset(ratings: pd.DataFrame, row_fraction: float = .1, n_folds: int 
             method=xf.SampleFrac(row_fraction)
         ))
     ))
-
-    # print(f'n test users: {len(result.test["user"].unique())}')
 
     return result
 

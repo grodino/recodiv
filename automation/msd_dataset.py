@@ -1176,7 +1176,10 @@ class EvaluateUserRecommendations(luigi.Task):
 
 class EvaluateModel(luigi.Task):
     """Compute evaluations metrics on a trained model over all the crossfolds,
-    averaged on all the users"""
+    averaged on all the users
+
+    TODO: create an Avg version of this task
+    """
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
@@ -1596,18 +1599,15 @@ class BuildRecommendationGraph(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
+    )
+    fold_id = luigi.parameter.IntParameter(
+        default=0, description='Select the fold_id\'th train/test pair'
     )
 
     n_recommendations = luigi.parameter.IntParameter(
@@ -1619,10 +1619,9 @@ class BuildRecommendationGraph(luigi.Task):
             'dataset': ImportDataset(self.dataset),
             'recommendations': GenerateRecommendations(
                 dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
+                model=self.model,
+                split=self.split,
+                fold_id=self.fold_id,
                 n_recommendations=self.n_recommendations
             ),
         }
@@ -1655,24 +1654,21 @@ class ComputeRecommendationDiversities(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
+    )
+
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
+    )
+    fold_id = luigi.parameter.IntParameter(
+        default=0, description='Select the fold_id\'th train/test pair'
+    )
+
     alpha = luigi.parameter.FloatParameter(
         default=2, description="The true diversity order"
     )
-
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
     )
@@ -1680,10 +1676,9 @@ class ComputeRecommendationDiversities(luigi.Task):
     def requires(self):
         return BuildRecommendationGraph(
             dataset=self.dataset,
-            n_iterations=self.n_iterations,
-            model_n_factors=self.model_n_factors,
-            model_regularization=self.model_regularization,
-            model_user_fraction=self.model_user_fraction,
+            model=self.model,
+            split=self.split,
+            fold_id=self.fold_id,
             n_recommendations=self.n_recommendations
         )
 
@@ -1719,24 +1714,21 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
+    )
+
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
+    )
+    fold_id = luigi.parameter.IntParameter(
+        default=0, description='Select the fold_id\'th train/test pair'
+    )
+
     alpha = luigi.parameter.FloatParameter(
         default=2, description="The true diversity order"
     )
-
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
     )
@@ -1745,10 +1737,9 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         return ComputeRecommendationDiversities(
             dataset=self.dataset,
             alpha=self.alpha,
-            n_iterations=self.n_iterations,
-            model_n_factors=self.model_n_factors,
-            model_regularization=self.model_regularization,
-            model_user_fraction=self.model_user_fraction,
+            model=self.model,
+            split=self.split,
+            fold_id=self.fold_id,
             n_recommendations=self.n_recommendations
         )
 
@@ -1773,6 +1764,7 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         del fig, ax, diversities
 
 
+# Rest is now deprecated
 class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
     """Plot the diversity of the recommendations associated to each user with
     respect to the user diversity before recommendations (ie train set
@@ -3196,29 +3188,32 @@ class MetricsSummary(luigi.Task):
 ################################################################################
 class ComputeRecommendationDiversityVsLatentFactors(luigi.Task):
     """Plot the mean user diversity of the recommendations as a function of the
-       number of latent factors"""
+       number of latent factors
+
+    The models in the given list must be implicit-MF models and differ only by
+    their number of factors.
+
+    TODO: compute this for all the folds, create an Avg version
+    """
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+
+    models = luigi.parameter.ListParameter(
+        description='The parameters of the model, passed to the model training function'
+    )
+
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
+    )
+    fold_id = luigi.parameter.IntParameter(
+        default=0, description='Select the fold_id\'th train/test pair'
+    )
+
     alpha = luigi.parameter.FloatParameter(
         default=2, description="The true diversity order"
     )
-
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    n_factors_values = luigi.parameter.ListParameter(
-        description='List of number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
     n_recommendations_values = luigi.parameter.ListParameter(
         description='List of number of recommendation to generate for each user at each training iteration if evaluate_iterations==True'
     )
@@ -3228,13 +3223,12 @@ class ComputeRecommendationDiversityVsLatentFactors(luigi.Task):
 
         tasks['dataset'] = ImportDataset(dataset=self.dataset)
 
-        for n_factors in self.n_factors_values:
-            tasks[n_factors] = GenerateRecommendations(
+        for model in self.models:
+            tasks[model['n_factors']] = GenerateRecommendations(
                 dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                model_n_factors=n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
+                model=model,
+                split=self.split,
+                fold_id=self.fold_id,
                 n_recommendations=max(self.n_recommendations_values)
             )
 
@@ -3242,21 +3236,28 @@ class ComputeRecommendationDiversityVsLatentFactors(luigi.Task):
 
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
+
+        n_factors_values = [model['n_factors'] for model in self.models]
+        regularization = self.models[0]['regularization']
+
         return luigi.LocalTarget(aggregated.joinpath(
-            f'{self.n_recommendations_values}recommendations_diversity{self.alpha}_vs_{self.n_factors_values}factors_{self.model_regularization}reg.csv'
+            f'{self.n_recommendations_values}recommendations_diversity{self.alpha}_vs_{n_factors_values}factors_{regularization}reg.csv'
         ))
 
     def run(self):
         self.output().makedirs()
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
 
+        # Assuming the n_factors paramets all differ in the models
+        n_factors_values = [model['n_factors'] for model in self.models]
+
         data = pd.DataFrame(
-            index=self.n_factors_values,
+            index=n_factors_values,
             columns=[
                 f'{n_recommendations} recommendations' for n_recommendations in self.n_recommendations_values]
         )
 
-        for n_factors in self.n_factors_values:
+        for n_factors in n_factors_values:
             recommendations: pd.DataFrame = pd.read_csv(
                 self.input()[n_factors].path)
 
@@ -3283,24 +3284,21 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
+
+    models = luigi.parameter.ListParameter(
+        description='The parameters of the model, passed to the model training function'
+    )
+
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
+    )
+    fold_id = luigi.parameter.IntParameter(
+        default=0, description='Select the fold_id\'th train/test pair'
+    )
+
     alpha = luigi.parameter.FloatParameter(
         default=2, description="The true diversity order"
     )
-
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    n_factors_values = luigi.parameter.ListParameter(
-        description='List of number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
     n_recommendations_values = luigi.parameter.ListParameter(
         description='List of number of recommendation to generate for each user at each training iteration if evaluate_iterations==True'
     )
@@ -3308,23 +3306,23 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
     def requires(self):
         req = {}
 
-        for n_factors in self.n_factors_values:
-            req[n_factors] = EvaluateModel(
+        for model in self.models:
+            # TODO: remove the hard-coded n_recommendations value by the
+            # n_recommendations_values values. Ex: ndcg is not the same for
+            # different values of n_recommendations.
+            req[model['n_factors']] = EvaluateModel(
                 dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                model_n_factors=n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
-                n_recommendations=50
+                model=model,
+                split=self.split,
+                n_recommendations=10
             )
 
         req['diversity'] = ComputeRecommendationDiversityVsLatentFactors(
             dataset=self.dataset,
             alpha=self.alpha,
-            n_iterations=self.n_iterations,
-            n_factors_values=self.n_factors_values,
-            model_regularization=self.model_regularization,
-            model_user_fraction=self.model_user_fraction,
+            models=self.models,
+            split=self.split,
+            fold_id=self.fold_id,
             n_recommendations_values=self.n_recommendations_values,
         )
 
@@ -3333,12 +3331,16 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
     def output(self):
         figures = self.dataset.base_folder.joinpath(
             'aggregated').joinpath('figures')
+
+        n_factors_values = [model['n_factors'] for model in self.models]
+        regularization = self.models[0]['regularization']
+
         return {
             'png': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations_values}recommendations_diversity{self.alpha}_vs_{self.n_factors_values}factors_{self.model_regularization}reg.png'
+                f'{self.n_recommendations_values}recommendations_diversity{self.alpha}_vs_{n_factors_values}factors_{regularization}reg.png'
             )),
             'latex': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations_values}recommendations_diversity{self.alpha}_vs_{self.n_factors_values}factors_{self.model_regularization}reg.tex'
+                f'{self.n_recommendations_values}recommendations_diversity{self.alpha}_vs_{n_factors_values}factors_{regularization}reg.tex'
             )),
         }
 
@@ -3350,11 +3352,14 @@ class PlotRecommendationDiversityVsLatentFactors(luigi.Task):
         data = data[1:].set_index('n_factors')
         data['ndcg'] = 0
 
-        for n_factors in self.n_factors_values[1:]:
+        # Assuming the n_factors paramets all differ in the models
+        n_factors_values = [model['n_factors'] for model in self.models]
+
+        for n_factors in n_factors_values[1:]:
             metric = pd.read_json(
                 self.input()[n_factors].path,
                 orient='index'
-            ).transpose()
+            )
             data.loc[n_factors, 'ndcg'] = metric['ndcg'][0]
 
         data = data.subtract(data.min())
