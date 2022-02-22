@@ -122,7 +122,7 @@ def evaluate_model_recommendations(recommendations, test, metrics) -> pd.DataFra
     :param metrics: list. A list of metrics' names (see recodiv.model.METRICS)
     """
 
-    analysis = topn.RecListAnalysis(n_jobs=20)
+    analysis = topn.RecListAnalysis()
 
     for metric_name in metrics:
         analysis.add_metric(METRICS[metric_name])

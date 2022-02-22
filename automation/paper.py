@@ -111,33 +111,60 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
 
         return tasks
 
-    # models = []
-    # for n_factor in [8, 16, 32, 64, 128]:
-    #     models.append(dict(
-    #         name='implicit-MF',
-    #         n_iterations=10,
-    #         n_factors=n_factor,
-    #         regularization=100.0,
-    #         confidence_factor=40,
-    #     ))
+    def diversity_vs_parameters():
+        tasks = []
+        latent_factors = np.logspace(3, 7, 5, base=2, dtype=int)
+        regularizations = np.logspace(-3, 3, 7)
 
-    # tasks = [
-    #     PlotRecommendationDiversityVsLatentFactors(
-    #         dataset=msd_dataset,
-    #         models=models,
-    #         split=split,
-    #         fold_id=2,
-    #         alpha=2,
-    #         n_recommendations_values=[10, ]
-    #     )
-    # ]
+        # Diversity vs n factors
+        models = []
+        for n_factors in latent_factors:
+            models.append(dict(
+                name='implicit-MF',
+                n_iterations=10,
+                n_factors=int(n_factors),
+                regularization=regularizations[2],
+                confidence_factor=40,
+            ))
 
-    # return test_hyperparameter_grid() + tasks
+        tasks.append(PlotRecommendationDiversityVsHyperparameter(
+            dataset=msd_dataset,
+            hyperparameter='n_factors',
+            models=models,
+            split=split,
+            fold_id=2,
+            alpha=2,
+            n_recommendations_values=[10, ]
+        ))
+
+        # Diversity vs regularization
+        models = []
+        for regularization in regularizations:
+            models.append(dict(
+                name='implicit-MF',
+                n_iterations=10,
+                n_factors=int(latent_factors[3]),
+                regularization=regularization,
+                confidence_factor=40,
+            ))
+
+        tasks.append(PlotRecommendationDiversityVsHyperparameter(
+            dataset=msd_dataset,
+            hyperparameter='regularization',
+            models=models,
+            split=split,
+            fold_id=2,
+            alpha=2,
+            n_recommendations_values=[10, ]
+        ))
+
+        return tasks
+
     return [
         DatasetInfo(dataset=msd_dataset),
         GenerateTrainTest(dataset=msd_dataset, split=split),
         TrainTestInfo(dataset=msd_dataset, split=split),
-    ] + test_single_model() + test_hyperparameter_grid()
+    ] + test_single_model() + test_hyperparameter_grid() + diversity_vs_parameters()
 
 
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
