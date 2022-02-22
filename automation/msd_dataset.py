@@ -1408,7 +1408,9 @@ class TuneModelHyperparameters(luigi.Task):
         }
 
     def run(self):
-        map(lambda x: x.makedirs(), self.output().values())
+        for folder in self.output().values():
+            folder.makedirs()
+
         metrics = pd.DataFrame()
 
         for (n_factors, regularization), metrics_file in self.input().items():

@@ -137,7 +137,7 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
         DatasetInfo(dataset=msd_dataset),
         GenerateTrainTest(dataset=msd_dataset, split=split),
         TrainTestInfo(dataset=msd_dataset, split=split),
-    ] + test_single_model()
+    ] + test_single_model() + test_hyperparameter_grid()
 
 
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:

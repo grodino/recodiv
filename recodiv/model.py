@@ -135,7 +135,7 @@ def evaluate_model_loss(model: TopN, predictions) -> float:
 
     # do not consider the user-item pairs where no prediction could be generated
     # (ie the items not in train set)
-    predictions = predictions[predictions['prediction'].notna()]
+    # predictions = predictions[predictions['prediction'].notna()]
 
     confidence = 1 + model.predictor.weight * predictions['rating'].to_numpy()
     prediction = predictions['prediction'].to_numpy()
@@ -145,7 +145,7 @@ def evaluate_model_loss(model: TopN, predictions) -> float:
         + np.linalg.norm(model.predictor.item_features_, 'fro')
     )
 
-    return np.dot(confidence, (1 - prediction)**2) + reg
+    return (1 / prediction.shape[0]) * np.dot(confidence, (1 - prediction)**2) + reg
 
 
 def rank_to_weight(user_item, recommendations):
