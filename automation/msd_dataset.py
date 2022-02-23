@@ -1,14 +1,11 @@
 import json
-from re import split
 import time
 import shutil
-import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from lenskit.algorithms.als import ImplicitMF
 
 import luigi
-from luigi import parameter
 from luigi.format import Nop
 import binpickle
 import tikzplotlib
@@ -614,22 +611,21 @@ class TrainTestInfo(luigi.Task):
             json.dump(info, file, indent=4)
 
 
-# TODO: Rethink what to define as train/test individual metrics
 class BuildTrainTestGraphs(luigi.Task):
     """Build users-songs-tags graph for the train and test sets"""
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
 
     def requires(self):
         return {
             'train_test': GenerateTrainTest(
                 dataset=self.dataset,
-                user_fraction=self.user_fraction
+                split=self.split
             ),
             'dataset': ImportDataset(
                 dataset=self.dataset
@@ -637,33 +633,47 @@ class BuildTrainTestGraphs(luigi.Task):
         }
 
     def output(self):
-        return {
-            'train': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath('trainset-graph.pk'),
-                format=luigi.format.Nop
-            ),
-            'test': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath('testset-graph.pk'),
-                format=luigi.format.Nop
-            ),
-        }
+        out = []
+
+        for i in range(self.split['n_fold']):
+            out.append({
+                'train': luigi.LocalTarget(
+                    self.dataset.data_folder.joinpath(
+                        f'{self.split["name"]}/fold-{i}/train-grpah.pk'),
+                    format=Nop
+                ),
+                'test': luigi.LocalTarget(
+                    self.dataset.data_folder.joinpath(
+                        f'{self.split["name"]}/fold-{i}/test-graph.pk'),
+                    format=Nop
+                )
+            })
+
+        return out
 
     def run(self):
-        self.output()['train'].makedirs()
+        self.output()[0]['train'].makedirs()
 
-        train_user_item = pd.read_csv(self.input()['train_test']['train'].path)
-        test_user_item = pd.read_csv(self.input()['train_test']['test'].path)
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
 
-        train_graph = generate_graph(train_user_item, item_tag)
-        test_graph = generate_graph(test_user_item, item_tag)
+        for i, fold in enumerate(self.input()['train_test']):
+            train_user_item = pd.read_csv(
+                fold['train'].path)
+            test_user_item = pd.read_csv(
+                fold['test'].path)
 
-        train_graph.persist(self.output()['train'].path)
-        test_graph.persist(self.output()['test'].path)
+            train_graph = generate_graph(train_user_item, item_tag)
+            test_graph = generate_graph(test_user_item, item_tag)
 
-        del train_graph, test_graph, train_user_item, test_user_item, item_tag
+            train_graph.persist(self.output()[i]['train'].path)
+            test_graph.persist(self.output()[i]['test'].path)
+
+            del train_graph, test_graph, train_user_item, test_user_item
+
+        del item_tag
 
 
+# Deprecated
 class ComputeTrainTestUserDiversity(luigi.Task):
     """Compute the user diversity of the users in the train and test sets"""
 
@@ -1832,141 +1842,7 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         del fig, ax, diversities
 
 
-# Rest is now deprecated
-class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
-    """Plot the diversity of the recommendations associated to each user with
-    respect to the user diversity before recommendations (ie train set
-    diversity)"""
-
-    dataset: Dataset = luigi.parameter.Parameter(
-        description='Instance of the Dataset class or subclasses'
-    )
-    alpha = luigi.parameter.FloatParameter(
-        default=2, description="The true diversity order"
-    )
-
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
-    n_recommendations = luigi.parameter.IntParameter(
-        default=50, description='Number of recommendation to generate per user'
-    )
-
-    bounds = luigi.parameter.ListParameter(
-        default=None,
-        description=(
-            "The bounding box of the graph supplied as (x_min, x_max, y_min,"
-            "y_max). If a value is None, leaves matplotlib default"
-        )
-    )
-
-    def requires(self):
-        return {
-            'train_test': GenerateTrainTest(
-                dataset=self.dataset,
-                user_fraction=self.model_user_fraction,
-            ),
-            'diversity': ComputeTrainTestUserDiversity(
-                dataset=self.dataset,
-                alpha=self.alpha,
-                user_fraction=self.model_user_fraction,
-            ),
-            'recommendation_diversity': ComputeRecommendationDiversities(
-                dataset=self.dataset,
-                alpha=self.alpha,
-                n_iterations=self.n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations
-            ),
-        }
-
-    def output(self):
-        figures = Path(
-            self.input()['recommendation_diversity'].path).parent.joinpath('figures')
-        return {
-            'png': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_vs_original_diversity.png'
-            )),
-            'latex': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_vs_original_diversity.tex'
-            )),
-        }
-
-    def run(self):
-        self.output()['png'].makedirs()
-        diversities = pd.read_csv(self.input()['diversity']['train'].path)
-        reco_diversities = pd.read_csv(
-            self.input()['recommendation_diversity'].path
-        ).rename(columns={'diversity': 'reco_diversity'})
-
-        # compute user volume
-        user_item = pd.read_csv(self.input()['train_test']['train'].path)
-        volume = user_item.groupby('user')['rating'].sum() \
-            .rename('volume')
-
-        # inner join, only keep users for whom we calculated a recommendation diversity value
-        merged: pd.DataFrame = reco_diversities.merge(diversities, on='user')
-        merged = merged.merge(volume, on='user')
-
-        up_bound = min(merged['diversity'].max(),
-                       merged['reco_diversity'].max())
-        low_bound = max(merged['diversity'].min(),
-                        merged['reco_diversity'].min())
-
-        _, ax = pl.subplots()
-        ax.plot([low_bound, up_bound], [low_bound, up_bound], '--', c='purple')
-
-        if self.bounds == None:
-            self.bounds = [None, None, None, None]
-
-        merged.plot.scatter(
-            ax=ax,
-            x='diversity',
-            y='reco_diversity',
-            marker='+',
-            c='volume',
-            colormap='viridis',
-            norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
-            xlim=self.bounds[:2],
-            ylim=self.bounds[2:],
-        )
-        pl.xlabel('organic diversity')
-        pl.ylabel('recommendation diversity')
-
-        pl.savefig(self.output()['png'].path, format='png', dpi=300)
-
-        with open(self.output()['latex'].path, 'w') as file:
-            code: str = tikzplotlib.get_tikz_code(
-                extra_axis_parameters=[
-                    'clip mode=individual', 'clip marker paths=true']
-            )
-
-            code = code.replace('ytick={1,10,100,1000}', 'ytick={0,1,2,3}')
-            code = code.replace(
-                'meta=colordata', 'meta expr=lg10(\\thisrow{colordata})')
-            code = code.replace('point meta', '% point meta')
-            code = code.replace('semithick', 'very thick')
-
-            file.write(code)
-
-        pl.clf()
-
-        del diversities, reco_diversities, merged
-
-
+# WIP
 class BuildRecommendationsWithListeningsGraph(luigi.Task):
     """Add the recommendations to the train user-item-tag graph
 
@@ -1977,20 +1853,20 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
         description='Instance of the Dataset class or subclasses'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
+    )
+    fold_id = luigi.parameter.IntParameter(
+        default=0, description='Select the fold_id\'th train/test pair'
     )
 
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
     )
@@ -1999,7 +1875,7 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
         return {
             'graph': BuildTrainTestGraphs(
                 dataset=self.dataset,
-                user_fraction=self.model_user_fraction
+                split=self.split
             ),
             'train_test': GenerateTrainTest(
                 dataset=self.dataset,
@@ -2184,6 +2060,141 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
         deltas.to_csv(self.output().path, index=False)
 
         del original, deltas
+
+
+# Rest is now deprecated
+class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
+    """Plot the diversity of the recommendations associated to each user with
+    respect to the user diversity before recommendations (ie train set
+    diversity)"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
+    )
+
+    n_iterations = luigi.parameter.IntParameter(
+        default=10, description='Number of training iterations'
+    )
+    model_n_factors = luigi.parameter.IntParameter(
+        default=30, description='Number of user/item latent facors'
+    )
+    model_regularization = luigi.parameter.FloatParameter(
+        default=.1, description='Regularization factor for the norm of user/item factors'
+    )
+
+    model_user_fraction = luigi.parameter.FloatParameter(
+        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    )
+
+    n_recommendations = luigi.parameter.IntParameter(
+        default=50, description='Number of recommendation to generate per user'
+    )
+
+    bounds = luigi.parameter.ListParameter(
+        default=None,
+        description=(
+            "The bounding box of the graph supplied as (x_min, x_max, y_min,"
+            "y_max). If a value is None, leaves matplotlib default"
+        )
+    )
+
+    def requires(self):
+        return {
+            'train_test': GenerateTrainTest(
+                dataset=self.dataset,
+                user_fraction=self.model_user_fraction,
+            ),
+            'diversity': ComputeTrainTestUserDiversity(
+                dataset=self.dataset,
+                alpha=self.alpha,
+                user_fraction=self.model_user_fraction,
+            ),
+            'recommendation_diversity': ComputeRecommendationDiversities(
+                dataset=self.dataset,
+                alpha=self.alpha,
+                n_iterations=self.n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations
+            ),
+        }
+
+    def output(self):
+        figures = Path(
+            self.input()['recommendation_diversity'].path).parent.joinpath('figures')
+        return {
+            'png': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_vs_original_diversity.png'
+            )),
+            'latex': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_vs_original_diversity.tex'
+            )),
+        }
+
+    def run(self):
+        self.output()['png'].makedirs()
+        diversities = pd.read_csv(self.input()['diversity']['train'].path)
+        reco_diversities = pd.read_csv(
+            self.input()['recommendation_diversity'].path
+        ).rename(columns={'diversity': 'reco_diversity'})
+
+        # compute user volume
+        user_item = pd.read_csv(self.input()['train_test']['train'].path)
+        volume = user_item.groupby('user')['rating'].sum() \
+            .rename('volume')
+
+        # inner join, only keep users for whom we calculated a recommendation diversity value
+        merged: pd.DataFrame = reco_diversities.merge(diversities, on='user')
+        merged = merged.merge(volume, on='user')
+
+        up_bound = min(merged['diversity'].max(),
+                       merged['reco_diversity'].max())
+        low_bound = max(merged['diversity'].min(),
+                        merged['reco_diversity'].min())
+
+        _, ax = pl.subplots()
+        ax.plot([low_bound, up_bound], [low_bound, up_bound], '--', c='purple')
+
+        if self.bounds == None:
+            self.bounds = [None, None, None, None]
+
+        merged.plot.scatter(
+            ax=ax,
+            x='diversity',
+            y='reco_diversity',
+            marker='+',
+            c='volume',
+            colormap='viridis',
+            norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
+            xlim=self.bounds[:2],
+            ylim=self.bounds[2:],
+        )
+        pl.xlabel('organic diversity')
+        pl.ylabel('recommendation diversity')
+
+        pl.savefig(self.output()['png'].path, format='png', dpi=300)
+
+        with open(self.output()['latex'].path, 'w') as file:
+            code: str = tikzplotlib.get_tikz_code(
+                extra_axis_parameters=[
+                    'clip mode=individual', 'clip marker paths=true']
+            )
+
+            code = code.replace('ytick={1,10,100,1000}', 'ytick={0,1,2,3}')
+            code = code.replace(
+                'meta=colordata', 'meta expr=lg10(\\thisrow{colordata})')
+            code = code.replace('point meta', '% point meta')
+            code = code.replace('semithick', 'very thick')
+
+            file.write(code)
+
+        pl.clf()
+
+        del diversities, reco_diversities, merged
 
 
 class PlotDiversitiesIncreaseHistogram(luigi.Task):

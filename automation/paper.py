@@ -23,6 +23,13 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
         row_fraction=.1
     )
 
+    def data_info():
+        return [
+            DatasetInfo(dataset=msd_dataset),
+            GenerateTrainTest(dataset=msd_dataset, split=split),
+            TrainTestInfo(dataset=msd_dataset, split=split),
+        ]
+
     def test_single_model():
         model = dict(
             name='implicit-MF',
@@ -160,11 +167,7 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
 
         return tasks
 
-    return [
-        DatasetInfo(dataset=msd_dataset),
-        GenerateTrainTest(dataset=msd_dataset, split=split),
-        TrainTestInfo(dataset=msd_dataset, split=split),
-    ] + test_single_model() + test_hyperparameter_grid() + diversity_vs_parameters()
+    return [BuildTrainTestGraphs(dataset=msd_dataset, split=split), ]
 
 
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
