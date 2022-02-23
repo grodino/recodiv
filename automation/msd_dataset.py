@@ -639,7 +639,7 @@ class BuildTrainTestGraphs(luigi.Task):
             out.append({
                 'train': luigi.LocalTarget(
                     self.dataset.data_folder.joinpath(
-                        f'{self.split["name"]}/fold-{i}/train-grpah.pk'),
+                        f'{self.split["name"]}/fold-{i}/train-graph.pk'),
                     format=Nop
                 ),
                 'test': luigi.LocalTarget(
@@ -1452,7 +1452,7 @@ class TuneModelHyperparameters(luigi.Task):
 
 
 class PlotModelTuning(luigi.Task):
-    """Plot the 2D matrix of the model performance (ndcg value) on a 
+    """Plot the 2D matrix of the model performance (ndcg value) on a
        hyperparameter grid"""
 
     dataset: Dataset = luigi.parameter.Parameter(
@@ -1842,7 +1842,6 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
         del fig, ax, diversities
 
 
-# WIP
 class BuildRecommendationsWithListeningsGraph(luigi.Task):
     """Add the recommendations to the train user-item-tag graph
 
@@ -1860,67 +1859,74 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
     split = luigi.parameter.DictParameter(
         description='Name and parameters of the split to use'
     )
-    fold_id = luigi.parameter.IntParameter(
-        default=0, description='Select the fold_id\'th train/test pair'
-    )
-
-    alpha = luigi.parameter.FloatParameter(
-        default=2, description="The true diversity order"
-    )
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
     )
 
     def requires(self):
-        return {
+        req = {
             'graph': BuildTrainTestGraphs(
                 dataset=self.dataset,
                 split=self.split
             ),
             'train_test': GenerateTrainTest(
                 dataset=self.dataset,
-                user_fraction=self.model_user_fraction
+                split=self.split,
             ),
-            'recommendations': GenerateRecommendations(
-                dataset=self.dataset,
-                n_iterations=self.n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations
-            ),
+            'recommendations': [],
         }
 
-    def output(self):
-        model = Path(self.input()['recommendations'].path).parent
+        for i in range(self.split['n_fold']):
+            req['recommendations'].append(GenerateRecommendations(
+                dataset=self.dataset,
+                model=self.model,
+                split=self.split,
+                fold_id=i,
+                n_recommendations=self.n_recommendations
+            ))
 
-        return luigi.LocalTarget(
-            model.joinpath(
-                f'listenings-recommendations-{self.n_recommendations}-graph.pk'),
-            format=Nop
-        )
+        return req
+
+    def output(self):
+        out = []
+
+        for i in range(self.split['n_fold']):
+            model = Path(self.input()['recommendations'][i].path).parent
+
+            out.append(luigi.LocalTarget(
+                model.joinpath(
+                    f'listenings-{self.n_recommendations}recommendations'
+                    '-graph.pk'
+                ),
+                format=Nop
+            ))
+
+        return out
 
     def run(self):
-        self.output().makedirs()
+        self.output()[0].makedirs()
 
-        graph = IndividualHerfindahlDiversities.recall(
-            self.input()['graph']['test'].path
-        )
+        for i, fold_graph in enumerate(self.input()['graph']):
+            graph = IndividualHerfindahlDiversities.recall(
+                fold_graph['test'].path
+            )
 
-        # Used to compute the volume a user would have listened to if listening its music
-        user_item = pd.read_csv(self.input()['train_test']['test'].path)
-        recommendations = pd.read_csv(self.input()['recommendations'].path)
+            # Used to compute the volume a user would have listened to if listening its music
+            user_item = pd.read_csv(self.input()['train_test'][i]['test'].path)
+            recommendations = pd.read_csv(
+                self.input()['recommendations'][i].path)
 
-        graph = build_recommendations_listenings_graph(
-            graph,
-            user_item,
-            recommendations
-        )
-        graph.persist(self.output().path)
+            graph = build_recommendations_listenings_graph(
+                graph,
+                user_item,
+                recommendations
+            )
+            graph.persist(self.output()[i].path)
 
-        del graph, user_item, recommendations
+            del graph, user_item, recommendations
 
 
+# WIP
 class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
     """Compute the diversity of the users who were recommended, assuming they
        listened to all recommendations"""

@@ -80,6 +80,12 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 split=split,
                 n_recommendations=10
             ),
+            BuildRecommendationsWithListeningsGraph(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                n_recommendations=10
+            )
         ]
 
     def test_hyperparameter_grid():
@@ -167,7 +173,7 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
 
         return tasks
 
-    return [BuildTrainTestGraphs(dataset=msd_dataset, split=split), ]
+    return test_single_model()
 
 
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
