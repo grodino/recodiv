@@ -28,6 +28,9 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
             DatasetInfo(dataset=msd_dataset),
             GenerateTrainTest(dataset=msd_dataset, split=split),
             TrainTestInfo(dataset=msd_dataset, split=split),
+            ComputeTrainTestUserDiversity(
+                dataset=msd_dataset, split=split, alpha=2
+            ),
         ]
 
     def test_single_model():
@@ -87,6 +90,13 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 n_recommendations=10
             ),
             ComputeRecommendationWithListeningsUsersDiversities(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                n_recommendations=10,
+                alpha=2
+            ),
+            ComputeRecommendationWithListeningsUsersDiversityIncrease(
                 dataset=msd_dataset,
                 split=split,
                 model=model,
@@ -180,7 +190,7 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
 
         return tasks
 
-    return test_single_model()
+    return data_info() + test_single_model()
 
 
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:

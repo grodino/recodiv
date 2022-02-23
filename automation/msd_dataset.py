@@ -673,25 +673,24 @@ class BuildTrainTestGraphs(luigi.Task):
         del item_tag
 
 
-# Deprecated
 class ComputeTrainTestUserDiversity(luigi.Task):
     """Compute the user diversity of the users in the train and test sets"""
 
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    alpha = luigi.parameter.FloatParameter(
-        default=2, description="The true diversity order"
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
 
-    user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     def requires(self):
         return BuildTrainTestGraphs(
             dataset=self.dataset,
-            user_fraction=self.user_fraction
+            split=self.split
         )
 
     def output(self):
@@ -699,45 +698,55 @@ class ComputeTrainTestUserDiversity(luigi.Task):
         alpha = float(self.alpha)
         alpha = int(alpha) if alpha.is_integer() else alpha
 
-        return {
-            'train': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(
-                    f'trainset_users_diversities{alpha}.csv')
-            ),
-            'test': luigi.LocalTarget(
-                self.dataset.data_folder.joinpath(
-                    f'testset_users_diversities{alpha}.csv')
-            ),
-        }
+        out = []
+
+        for i in range(self.split['n_fold']):
+            out.append({
+                'train': luigi.LocalTarget(
+                    self.dataset.data_folder.joinpath(
+                        f'{self.split["name"]}/fold-{i}/train_users_diversities{alpha}.csv'),
+                    format=Nop
+                ),
+                'test': luigi.LocalTarget(
+                    self.dataset.data_folder.joinpath(
+                        f'{self.split["name"]}/fold-{i}/test_users_diversities{alpha}.csv'),
+                    format=Nop
+                )
+            })
+
+        return out
 
     def run(self):
-        train_graph = IndividualHerfindahlDiversities.recall(
-            self.input()['train'].path
-        )
-        test_graph = IndividualHerfindahlDiversities.recall(
-            self.input()['test'].path
-        )
+        for i in range(self.split['n_fold']):
+            train_graph = IndividualHerfindahlDiversities.recall(
+                self.input()[i]['train'].path
+            )
+            test_graph = IndividualHerfindahlDiversities.recall(
+                self.input()[i]['test'].path
+            )
 
-        train_graph.normalise_all()
-        train_diversities = train_graph.diversities(
-            (0, 1, 2), alpha=self.alpha)
+            train_graph.normalise_all()
+            train_diversities = train_graph.diversities(
+                (0, 1, 2), alpha=self.alpha)
 
-        test_graph.normalise_all()
-        test_diversities = test_graph.diversities((0, 1, 2), alpha=self.alpha)
+            test_graph.normalise_all()
+            test_diversities = test_graph.diversities(
+                (0, 1, 2), alpha=self.alpha)
 
-        pd.DataFrame({
-            'user': list(train_diversities.keys()),
-            'diversity': list(train_diversities.values())
-        }).to_csv(self.output()['train'].path, index=False)
+            pd.DataFrame({
+                'user': list(train_diversities.keys()),
+                'diversity': list(train_diversities.values())
+            }).to_csv(self.output()[i]['train'].path, index=False)
 
-        pd.DataFrame({
-            'user': list(test_diversities.keys()),
-            'diversity': list(test_diversities.values())
-        }).to_csv(self.output()['test'].path, index=False)
+            pd.DataFrame({
+                'user': list(test_diversities.keys()),
+                'diversity': list(test_diversities.values())
+            }).to_csv(self.output()[i]['test'].path, index=False)
 
-        del train_graph, test_graph, train_diversities, test_diversities
+            del train_graph, test_graph, train_diversities, test_diversities
 
 
+# Deprectated
 class PlotTrainTestUsersDiversitiesHistogram(luigi.Task):
     """Plot the histogram of user diversity"""
 
@@ -1994,7 +2003,6 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
             del graph, diversities
 
 
-# WIP
 class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
     """Compare the diversity of a user if they start listenings only to
     recommendations or if they continue to listen their music"""
@@ -2002,26 +2010,20 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    alpha = luigi.parameter.FloatParameter(
-        default=2, description="The true diversity order"
+
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
+    )
+
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     def requires(self):
@@ -2029,43 +2031,47 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
             'with_recommendations': ComputeRecommendationWithListeningsUsersDiversities(
                 dataset=self.dataset,
                 alpha=self.alpha,
-                n_iterations=self.n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
+                model=self.model,
+                split=self.split,
                 n_recommendations=self.n_recommendations
             ),
             'original': ComputeTrainTestUserDiversity(
                 dataset=self.dataset,
+                split=self.split,
                 alpha=self.alpha,
             )
         }
 
     def output(self):
-        model = Path(self.input()['with_recommendations'].path).parent
+        out = []
 
-        # Avoid issues where 0.0 and 0 lead to different file titles
-        alpha = float(self.alpha)
-        alpha = int(alpha) if alpha.is_integer() else alpha
+        for i in range(self.split['n_fold']):
+            model = Path(self.input()['with_recommendations'][i].path).parent
 
-        return luigi.LocalTarget(
-            model.joinpath(
-                f'listenings-recommendations-{self.n_recommendations}-users_diversities{alpha}_increase.csv')
-        )
+            # Avoid issues where 0.0 and 0 lead to different file titles
+            alpha = float(self.alpha)
+            alpha = int(alpha) if alpha.is_integer() else alpha
+
+            out.append(luigi.LocalTarget(
+                model.joinpath(
+                    f'listenings-recommendations-{self.n_recommendations}-users_diversities{alpha}_increase.csv')
+            ))
+
+        return out
 
     def run(self):
-        with_recommendations = pd.read_csv(self.input()['with_recommendations'].path) \
-            .set_index('user')
-        original = pd.read_csv(self.input()['original']['test'].path) \
-            .set_index('user')
+        for i in range(self.split['n_fold']):
+            with_recommendations = pd.read_csv(self.input()['with_recommendations'][i].path) \
+                .set_index('user')
+            original = pd.read_csv(self.input()['original'][i]['test'].path) \
+                .set_index('user')
 
-        deltas = (with_recommendations['diversity'] - original['diversity']) \
-            .dropna() \
-            .reset_index()
+            deltas = (with_recommendations['diversity'] - original['diversity']) \
+                .reset_index()
 
-        deltas.to_csv(self.output().path, index=False)
+            deltas.to_csv(self.output()[i].path, index=False)
 
-        del original, deltas
+            del original, deltas
 
 
 # Rest is now deprecated
