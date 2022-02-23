@@ -1926,7 +1926,6 @@ class BuildRecommendationsWithListeningsGraph(luigi.Task):
             del graph, user_item, recommendations
 
 
-# WIP
 class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
     """Compute the diversity of the users who were recommended, assuming they
        listened to all recommendations"""
@@ -1934,67 +1933,68 @@ class ComputeRecommendationWithListeningsUsersDiversities(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    alpha = luigi.parameter.FloatParameter(
-        default=2, description="The true diversity order"
+
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
+    )
+
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     def requires(self):
         return BuildRecommendationsWithListeningsGraph(
             dataset=self.dataset,
-            n_iterations=self.n_iterations,
-            model_n_factors=self.model_n_factors,
-            model_regularization=self.model_regularization,
-            model_user_fraction=self.model_user_fraction,
+            model=self.model,
+            split=self.split,
             n_recommendations=self.n_recommendations
         )
 
     def output(self):
-        model = Path(self.input().path).parent
-
         # Avoid issues where 0.0 and 0 lead to different file titles
         alpha = float(self.alpha)
         alpha = int(alpha) if alpha.is_integer() else alpha
 
-        return luigi.LocalTarget(
-            model.joinpath(
-                f'listenings-recommendations-{self.n_recommendations}-users_diversities{alpha}.csv')
-        )
+        out = []
+
+        for i in range(self.split['n_fold']):
+            model = Path(self.input()[i].path).parent
+
+            out.append(luigi.LocalTarget(
+                model.joinpath(
+                    f'listenings-recommendations-{self.n_recommendations}-users_diversities{alpha}.csv'
+                ),
+                format=Nop
+            ))
+
+        return out
 
     def run(self):
-        graph = IndividualHerfindahlDiversities.recall(
-            self.input().path
-        )
+        for i in range(self.split['n_fold']):
+            graph = IndividualHerfindahlDiversities.recall(
+                self.input()[i].path
+            )
 
-        graph.normalise_all()
-        diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
-        diversities = pd.DataFrame({
-            'user': list(diversities.keys()),
-            'diversity': list(diversities.values())
-        })
+            graph.normalise_all()
+            diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
+            diversities = pd.DataFrame({
+                'user': list(diversities.keys()),
+                'diversity': list(diversities.values())
+            })
 
-        diversities.to_csv(self.output().path, index=False)
+            diversities.to_csv(self.output()[i].path, index=False)
 
-        del graph, diversities
+            del graph, diversities
 
 
+# WIP
 class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
     """Compare the diversity of a user if they start listenings only to
     recommendations or if they continue to listen their music"""

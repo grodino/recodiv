@@ -85,6 +85,13 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 split=split,
                 model=model,
                 n_recommendations=10
+            ),
+            ComputeRecommendationWithListeningsUsersDiversities(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                n_recommendations=10,
+                alpha=2
             )
         ]
 
