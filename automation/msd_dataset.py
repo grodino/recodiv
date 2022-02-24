@@ -3,7 +3,7 @@ import time
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from lenskit.algorithms.als import ImplicitMF
+from typing import List
 
 import luigi
 from luigi.format import Nop
@@ -12,9 +12,8 @@ import tikzplotlib
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from matplotlib import colors
+from matplotlib import colors, cm, figure
 from matplotlib import pyplot as pl
-from matplotlib import patches as mpatches
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from recodiv.utils import dataset_info
@@ -36,6 +35,30 @@ from recodiv.triversity.graph import IndividualHerfindahlDiversities
 
 # Path to generated folder
 GENERATED = Path('generated/')
+
+pl.rcParams.update({
+    # "figure.figsize": [.6*6.4, .6*4.8],     # change figure default size
+    # "figure.figsize": [1.2*6.4, 1.2*4.8],     # change figure default size
+    "savefig.bbox": "tight",                # image fitted to the figure
+    # grid lines for major and minor ticks
+    "lines.linewidth": .7,                  # reduce linewidth to better see the points
+    "font.family": "serif",                 # use serif/main font for text elements
+    "font.size": 9,
+    "legend.title_fontsize": 9,
+    "legend.fontsize": 9,
+    "mathtext.fontset": "dejavuserif",      # use serif font for math elements
+    # "text.usetex": True,                    # use inline math for ticks
+    # "pgf.rcfonts": False,                   # don't setup fonts from rc parameters
+    # "pgf.preamble": "\n".join([
+    #     r"\usepackage{url}",                # load additional packages
+    #     r"\usepackage{unicode-math}",       # unicode math setup
+    #     # r"\setmainfont{DejaVu Serif}",      # serif font via preamble
+    #     r"\renewcommand{\rmdefault}{ptm}",
+    #     r"\renewcommand{\sfdefault}{phv}",
+    #     r"\usepackage{pifont}",
+    #     r"\usepackage{mathptmx}",
+    # ])
+})
 
 
 ################################################################################
@@ -1676,6 +1699,7 @@ class PlotModelEvaluationVsLatentFactors(luigi.Task):
 ################################################################################
 # RECOMMENDATIONS ANALYSIS                                                     #
 ################################################################################
+# WIP
 class BuildRecommendationGraph(luigi.Task):
     """Build the user-song-tag graph for the recommendations.
 
@@ -1735,6 +1759,7 @@ class BuildRecommendationGraph(luigi.Task):
         del graph
 
 
+# WIP
 class ComputeRecommendationDiversities(luigi.Task):
     """Compute the diversity of the songs recommended to users"""
 
@@ -1748,9 +1773,6 @@ class ComputeRecommendationDiversities(luigi.Task):
 
     split = luigi.parameter.DictParameter(
         description='Name and parameters of the split to use'
-    )
-    fold_id = luigi.parameter.IntParameter(
-        default=0, description='Select the fold_id\'th train/test pair'
     )
 
     alpha = luigi.parameter.FloatParameter(
@@ -1795,6 +1817,7 @@ class ComputeRecommendationDiversities(luigi.Task):
         del graph, diversities
 
 
+# WIP
 class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
     """Plot the histogram of recommendations diversity for each user"""
 
@@ -2074,6 +2097,201 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
             del original, deltas
 
 
+# WIP
+class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
+    """Plot the user diversity increase with respect to the user diversity
+       before recommendations"""
+
+    dataset: Dataset = luigi.parameter.Parameter(
+        description='Instance of the Dataset class or subclasses'
+    )
+
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
+    )
+
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
+    )
+    n_recommendations_values = luigi.parameter.ListParameter(
+        description='List of number of recommendation to generate per user'
+    )
+
+    alpha_values = luigi.parameter.ListParameter(
+        description="A list of true diversity orders"
+    )
+
+    fold_id = luigi.parameter.IntParameter(
+        description="The id of the fold to choose the test data from"
+    )
+
+    bounds = luigi.parameter.ListParameter(
+        default=None,
+        description=(
+            "The bounding box of the graph supplied as (x_min, x_max, y_min,"
+            "y_max). If a value is None, leaves matplotlib default"
+        )
+    )
+
+    users = luigi.ListParameter(
+        default=[], description='Specific users to pinpoint in the graph'
+    )
+
+    show_colorbar = luigi.BoolParameter(
+        default=True, description='Whether to display the colobar or not'
+    )
+
+    def requires(self):
+        req = {
+            'train_test': GenerateTrainTest(
+                dataset=self.dataset,
+                split=self.split
+            ),
+            'user_diversity': [],
+            'diversity_increase': [],
+        }
+
+        for alpha in self.alpha_values:
+            for n_recommendations in self.n_recommendations_values:
+                req['user_diversity'].append(ComputeTrainTestUserDiversity(
+                    dataset=self.dataset,
+                    alpha=alpha,
+                    split=self.split
+                ))
+                req['diversity_increase'].append(ComputeRecommendationWithListeningsUsersDiversityIncrease(
+                    dataset=self.dataset,
+                    alpha=alpha,
+                    model=self.model,
+                    split=self.split,
+                    n_recommendations=n_recommendations
+                ))
+
+        return req
+
+    def output(self):
+        figures = Path(self.input()['diversity_increase'][0][self.fold_id].path) \
+            .parent.joinpath('figures')
+
+        return {
+            'png': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations_values}-recommendations_diversity{self.alpha_values}_increase_vs_original_diversity.png'
+            )),
+            'pdf': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations_values}-recommendations_diversity{self.alpha_values}_increase_vs_original_diversity.eps'
+            )),
+        }
+
+    def run(self):
+        self.output()['png'].makedirs()
+
+        n_recs = len(self.n_recommendations_values)
+        n_alphas = len(self.alpha_values)
+
+        fig: figure.Figure
+        fig, axes = pl.subplots(
+            n_alphas, n_recs,
+            constrained_layout=True,
+            figsize=(.8*6.4, .8*(4.8 + 1.5)),
+            dpi=600
+        )
+        flat_axes: List[pl.Axes] = axes.flatten()
+
+        # Compute the min and max volume
+        min_volume, max_volume = float('inf'), 0
+
+        for i, ax in enumerate(flat_axes):
+            diversities = pd.read_csv(
+                self.input()['user_diversity'][i][self.fold_id]['test'].path)
+            increase = pd.read_csv(self.input()['diversity_increase'][i][self.fold_id].path).rename(
+                columns={'diversity': 'increase'})
+
+            # compute user volume
+            user_item = pd.read_csv(
+                self.input()['train_test'][self.fold_id]['train'].path)
+            volume = user_item.groupby('user')['rating'].sum() \
+                .rename('volume')
+
+            # Compute the min, max volume over all the plots
+            min_volume = min(min_volume, volume.min())
+            max_volume = max(max_volume, volume.max())
+
+            # inner join, only keep users for whom we calculated a diversity increase value
+            merged = increase.merge(diversities, on='user')
+            merged = merged.merge(volume, on='user')
+
+            if self.bounds == None:
+                self.bounds = [None, None, None, None]
+
+            # Plot the user points
+            ax.scatter(
+                x=merged['diversity'],
+                y=merged['increase'],
+                marker='o',
+                c=merged['volume'],
+                cmap='viridis',
+                s=10,
+                norm=colors.LogNorm(vmin=min_volume, vmax=max_volume),
+                rasterized=True
+            )
+            ax.set_box_aspect(1/1.3333333)
+            ax.set_xlim(self.bounds[:2])
+            ax.set_ylim(self.bounds[2:])
+
+            # Plot the linear regression
+            a, b = linear_regression(merged, 'diversity', 'increase')
+            x = merged[(self.bounds[0] < merged['diversity']) & (merged['diversity'] < self.bounds[1])]['diversity'] \
+                .sort_values().to_numpy()
+            y = a * x + b
+            ax.plot(x, y, '--', c='purple')
+
+            markers = ['^', '*', 'o', 's']
+            for i, user in enumerate(self.users):
+                merged[merged['user'] == user].plot(
+                    ax=ax,
+                    x='diversity',
+                    y='increase',
+                    marker=markers[i],
+                    markeredgewidth=1,
+                    # markeredgecolor='yellow',
+                    c='red',
+                )
+
+            # Normalize the display of alpha
+            alpha = float(self.alpha_values[i//n_alphas])
+            if alpha.is_integer():
+                alpha = f'{int(alpha)}'
+            elif alpha == float('inf'):
+                alpha = f'+\infty'
+
+            ax.set_title(
+                f'({chr(97 + i)}) '
+                f'$k = {self.n_recommendations_values[i%n_alphas]}$, '
+                f'$\\alpha = {alpha}$'
+            )
+
+        # Create the colorbar
+        norm = colors.LogNorm(vmin=min_volume, vmax=max_volume)
+        fig.colorbar(
+            cm.ScalarMappable(norm=norm, cmap='viridis'),
+            ax=axes[0, :],
+            location='top',
+            label='user listening volume',
+            shrink=.7,
+            pad=.1
+        )
+
+        fig.set_constrained_layout_pads(w_pad=0.01, wspace=0.03)
+        fig.supxlabel('organic diversity')
+        fig.supylabel('diversity increase')
+
+        fig.savefig(self.output()['png'].path, format='png', dpi=300)
+        fig.savefig(self.output()['pdf'].path)
+
+        pl.clf()
+
+        del diversities, increase, merged
+
+
 # Rest is now deprecated
 class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
     """Plot the diversity of the recommendations associated to each user with
@@ -2083,26 +2301,20 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
     dataset: Dataset = luigi.parameter.Parameter(
         description='Instance of the Dataset class or subclasses'
     )
-    alpha = luigi.parameter.FloatParameter(
-        default=2, description="The true diversity order"
+
+    model = luigi.parameter.DictParameter(
+        description='The parameters of the model, passed to the model training function'
     )
 
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
+    split = luigi.parameter.DictParameter(
+        description='Name and parameters of the split to use'
     )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
+    )
+
+    alpha = luigi.parameter.FloatParameter(
+        default=2, description="The true diversity order"
     )
 
     bounds = luigi.parameter.ListParameter(
@@ -2117,12 +2329,12 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         return {
             'train_test': GenerateTrainTest(
                 dataset=self.dataset,
-                user_fraction=self.model_user_fraction,
+                split=self.split,
             ),
             'diversity': ComputeTrainTestUserDiversity(
                 dataset=self.dataset,
+                split=self.split,
                 alpha=self.alpha,
-                user_fraction=self.model_user_fraction,
             ),
             'recommendation_diversity': ComputeRecommendationDiversities(
                 dataset=self.dataset,
@@ -2275,165 +2487,6 @@ class PlotDiversitiesIncreaseHistogram(luigi.Task):
         tikzplotlib.save(self.output()['latex'].path)
 
         del ax, deltas
-
-
-class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
-    """Plot the user diversity increase with respect to the user diversity
-       before recommendations"""
-
-    dataset: Dataset = luigi.parameter.Parameter(
-        description='Instance of the Dataset class or subclasses'
-    )
-    alpha = luigi.parameter.FloatParameter(
-        default=2, description="The true diversity order"
-    )
-
-    n_iterations = luigi.parameter.IntParameter(
-        default=10, description='Number of training iterations'
-    )
-    model_n_factors = luigi.parameter.IntParameter(
-        default=30, description='Number of user/item latent facors'
-    )
-    model_regularization = luigi.parameter.FloatParameter(
-        default=.1, description='Regularization factor for the norm of user/item factors'
-    )
-
-    model_user_fraction = luigi.parameter.FloatParameter(
-        default=.1, description='Proportion of users whose items are selected for test data sampling'
-    )
-
-    n_recommendations = luigi.parameter.IntParameter(
-        default=50, description='Number of recommendation to generate per user'
-    )
-
-    bounds = luigi.parameter.ListParameter(
-        default=None,
-        description=(
-            "The bounding box of the graph supplied as (x_min, x_max, y_min,"
-            "y_max). If a value is None, leaves matplotlib default"
-        )
-    )
-
-    users = luigi.ListParameter(
-        default=[], description='Specific users to pinpoint in the graph'
-    )
-
-    show_colorbar = luigi.BoolParameter(
-        default=True, description='Whether to display the colobar or not'
-    )
-
-    def requires(self):
-        return {
-            'dataset': GenerateTrainTest(
-                dataset=self.dataset,
-                user_fraction=self.model_user_fraction
-            ),
-            'user_diversity': ComputeTrainTestUserDiversity(
-                dataset=self.dataset,
-                alpha=self.alpha,
-                user_fraction=self.model_user_fraction
-            ),
-            'diversity_increase': ComputeRecommendationWithListeningsUsersDiversityIncrease(
-                dataset=self.dataset,
-                alpha=self.alpha,
-                n_iterations=self.n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations
-            ),
-        }
-
-    def output(self):
-        figures = Path(
-            self.input()['diversity_increase'].path).parent.joinpath('figures')
-        return {
-            'png': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_vs_original_diversity.png'
-            )),
-            'latex': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_increase_vs_original_diversity.tex'
-            )),
-        }
-
-    def run(self):
-        self.output()['png'].makedirs()
-        diversities = pd.read_csv(self.input()['user_diversity']['train'].path)
-        increase = pd.read_csv(self.input()['diversity_increase'].path).rename(
-            columns={'diversity': 'increase'})
-
-        # compute user volume
-        user_item = pd.read_csv(self.input()['dataset']['train'].path)
-        volume = user_item.groupby('user')['rating'].sum() \
-            .rename('volume')
-
-        # inner join, only keep users for whom we calculated a diversity increase value
-        merged = increase.merge(diversities, on='user')
-        merged = merged.merge(volume, on='user')
-        merged = merged[merged['increase'] != 0]
-
-        if self.bounds == None:
-            self.bounds = [None, None, None, None]
-
-        a, b = linear_regression(merged, 'diversity', 'increase')
-        x = merged[(self.bounds[0] < merged['diversity']) & (merged['diversity'] < self.bounds[1])]['diversity'] \
-            .sort_values().to_numpy()
-        y = a * x + b
-
-        ax: pl.Axes = merged.plot.scatter(
-            x='diversity',
-            y='increase',
-            marker='+',
-            c='volume',
-            colormap='viridis',
-            norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
-            xlim=self.bounds[:2],
-            ylim=self.bounds[2:],
-            colorbar=self.show_colorbar
-        )
-
-        ax.plot(x, y, '--', c='purple')
-
-        markers = ['^', '*', 'o', 's']
-        for i, user in enumerate(self.users):
-            merged[merged['user'] == user].plot(
-                ax=ax,
-                x='diversity',
-                y='increase',
-                marker=markers[i],
-                markeredgewidth=1,
-                # markeredgecolor='yellow',
-                c='red'
-            )
-
-        pl.xlabel('organic diversity')
-        pl.ylabel('diversity increase')
-        ax.get_legend().remove()
-
-        pl.savefig(self.output()['png'].path, format='png', dpi=300)
-
-        with open(self.output()['latex'].path, 'w') as file:
-            code: str = tikzplotlib.get_tikz_code(
-                extra_axis_parameters=[
-                    'clip mode=individual', 'clip marker paths=true']
-            )
-
-            code = code.replace('ytick={1,10,100,1000}', 'ytick={0,1,2,3}')
-            code = code.replace(
-                'meta=colordata', 'meta expr=lg10(\\thisrow{colordata})')
-            code = code.replace('point meta', '% point meta')
-            code = code.replace('semithick', 'very thick')
-            code = code.replace('colorbar,', 'colorbar horizontal,')
-            code = code.replace('ytick={0,1,2,3}', 'xtick={0,1,2,3}')
-            code = code.replace('yticklabels', 'xticklabels')
-            code = code.replace(
-                'ylabel={volume}', 'xlabel={volume},xticklabel pos=upper,at={(0,1.2)},anchor=north west')
-
-            file.write(code)
-
-        pl.clf()
-
-        del diversities, increase, merged
 
 
 class ComputeUserRecommendationsTagsDistribution(luigi.Task):

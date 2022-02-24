@@ -102,6 +102,14 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 model=model,
                 n_recommendations=10,
                 alpha=2
+            ),
+            PlotUserDiversityIncreaseVsUserDiversity(
+                dataset=msd_dataset,
+                split=split,
+                fold_id=0,
+                model=model,
+                n_recommendations_values=[10, 50, 100],
+                alpha_values=[0, 2, float('inf')],
             )
         ]
 
