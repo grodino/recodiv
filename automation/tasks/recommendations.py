@@ -3,6 +3,7 @@ from typing import List
 
 import luigi
 from luigi.format import Nop
+from matplotlib.axes import Axes
 import tikzplotlib
 import pandas as pd
 from matplotlib import colors, cm, figure
@@ -518,7 +519,7 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
             'png': luigi.LocalTarget(figures.joinpath(
                 f'{self.n_recommendations_values}-recommendations_diversity{self.alpha_values}_increase_vs_original_diversity.png'
             )),
-            'pdf': luigi.LocalTarget(figures.joinpath(
+            'eps': luigi.LocalTarget(figures.joinpath(
                 f'{self.n_recommendations_values}-recommendations_diversity{self.alpha_values}_increase_vs_original_diversity.eps'
             )),
         }
@@ -627,14 +628,13 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         fig.supylabel('diversity increase')
 
         fig.savefig(self.output()['png'].path, format='png', dpi=300)
-        fig.savefig(self.output()['pdf'].path)
+        fig.savefig(self.output()['eps'].path)
 
         pl.clf()
 
         del diversities, increase, merged
 
 
-# WIP
 class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
     """Plot the diversity of the recommendations associated to each user with
     respect to the user diversity before recommendations (ie train set
@@ -655,8 +655,12 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         default=50, description='Number of recommendation to generate per user'
     )
 
-    alpha = luigi.parameter.FloatParameter(
-        default=2, description="The true diversity order"
+    fold_id = luigi.parameter.IntParameter(
+        default=0, description='Select the fold_id\'th train/test pair'
+    )
+
+    alpha_values = luigi.parameter.FloatParameter(
+        description="List of true diversity order"
     )
 
     bounds = luigi.parameter.ListParameter(
@@ -668,99 +672,125 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
     )
 
     def requires(self):
-        return {
+        out = {
             'train_test': GenerateTrainTest(
                 dataset=self.dataset,
                 split=self.split,
             ),
-            'diversity': ComputeTrainTestUserDiversity(
+            'diversity': [],
+            'recommendation_diversity': [],
+        }
+
+        for alpha in self.alpha_values:
+            out['recommendation_diversity'].append(ComputeRecommendationDiversities(
+                dataset=self.dataset,
+                alpha=alpha,
+                model=self.model,
+                split=self.split,
+                n_recommendations=self.n_recommendations
+            ))
+            out['diversity'].append(ComputeTrainTestUserDiversity(
                 dataset=self.dataset,
                 split=self.split,
-                alpha=self.alpha,
-            ),
-            'recommendation_diversity': ComputeRecommendationDiversities(
-                dataset=self.dataset,
-                alpha=self.alpha,
-                n_iterations=self.n_iterations,
-                model_n_factors=self.model_n_factors,
-                model_regularization=self.model_regularization,
-                model_user_fraction=self.model_user_fraction,
-                n_recommendations=self.n_recommendations
-            ),
-        }
+                alpha=alpha,
+            ))
+
+        return out
 
     def output(self):
         figures = Path(
-            self.input()['recommendation_diversity'].path).parent.joinpath('figures')
+            self.input()['recommendation_diversity'][0][self.fold_id].path).parent.joinpath('figures')
+
         return {
             'png': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_vs_original_diversity.png'
+                f'{self.n_recommendations}-recommendations_diversity{self.alpha_values}_vs_original_diversity.png'
             )),
-            'latex': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations}-recommendations_diversity{self.alpha}_vs_original_diversity.tex'
+            'eps': luigi.LocalTarget(figures.joinpath(
+                f'{self.n_recommendations}-recommendations_diversity{self.alpha_values}_vs_original_diversity.eps'
             )),
         }
 
     def run(self):
         self.output()['png'].makedirs()
-        diversities = pd.read_csv(self.input()['diversity']['train'].path)
-        reco_diversities = pd.read_csv(
-            self.input()['recommendation_diversity'].path
-        ).rename(columns={'diversity': 'reco_diversity'})
+
+        n_alphas = len(self.alpha_values)
+        fig, axes = pl.subplots(
+            1, n_alphas,
+            constrained_layout=True,
+            figsize=(.8*6.4, .8*(4.8 - 2)),
+            dpi=600
+        )
+        axes_flat: List[Axes] = axes.flatten()
 
         # compute user volume
-        user_item = pd.read_csv(self.input()['train_test']['train'].path)
+        user_item = pd.read_csv(
+            self.input()['train_test'][self.fold_id]['train'].path
+        )
         volume = user_item.groupby('user')['rating'].sum() \
             .rename('volume')
 
-        # inner join, only keep users for whom we calculated a recommendation diversity value
-        merged: pd.DataFrame = reco_diversities.merge(diversities, on='user')
-        merged = merged.merge(volume, on='user')
-
-        up_bound = min(merged['diversity'].max(),
-                       merged['reco_diversity'].max())
-        low_bound = max(merged['diversity'].min(),
-                        merged['reco_diversity'].min())
-
-        _, ax = pl.subplots()
-        ax.plot([low_bound, up_bound], [low_bound, up_bound], '--', c='purple')
-
-        if self.bounds == None:
-            self.bounds = [None, None, None, None]
-
-        merged.plot.scatter(
-            ax=ax,
-            x='diversity',
-            y='reco_diversity',
-            marker='+',
-            c='volume',
-            colormap='viridis',
-            norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
-            xlim=self.bounds[:2],
-            ylim=self.bounds[2:],
-        )
-        pl.xlabel('organic diversity')
-        pl.ylabel('recommendation diversity')
-
-        pl.savefig(self.output()['png'].path, format='png', dpi=300)
-
-        with open(self.output()['latex'].path, 'w') as file:
-            code: str = tikzplotlib.get_tikz_code(
-                extra_axis_parameters=[
-                    'clip mode=individual', 'clip marker paths=true']
+        for ax, diversities_file, reco_diversities_file in zip(axes_flat, self.input()['diversity'], self.input()['recommendation_diversity']):
+            # Retrieve diversities
+            diversities = pd.read_csv(
+                diversities_file[self.fold_id]['test'].path
             )
+            reco_diversities = pd.read_csv(
+                reco_diversities_file[self.fold_id].path
+            ).rename(columns={'diversity': 'reco_diversity'})
 
-            code = code.replace('ytick={1,10,100,1000}', 'ytick={0,1,2,3}')
-            code = code.replace(
-                'meta=colordata', 'meta expr=lg10(\\thisrow{colordata})')
-            code = code.replace('point meta', '% point meta')
-            code = code.replace('semithick', 'very thick')
+            # inner join, only keep users for whom we calculated a recommendation diversity value
+            merged: pd.DataFrame = reco_diversities.merge(
+                diversities, on='user')
+            merged = merged.merge(volume, on='user')
 
-            file.write(code)
+            up_bound = min(merged['diversity'].max(),
+                           merged['reco_diversity'].max())
+            low_bound = max(merged['diversity'].min(),
+                            merged['reco_diversity'].min())
+
+            ax.plot([low_bound, up_bound], [
+                    low_bound, up_bound], '--', c='purple')
+
+            if self.bounds == None:
+                self.bounds = [None, None, None, None]
+
+            # Plot the user points
+            ax.scatter(
+                x=merged['diversity'],
+                y=merged['reco_diversity'],
+                marker='o',
+                c=merged['volume'],
+                cmap='viridis',
+                s=10,
+                norm=colors.LogNorm(vmin=volume.min(), vmax=volume.max()),
+                rasterized=True
+            )
+            ax.set_box_aspect(1/1.3333333)
+            ax.set_xlim(self.bounds[:2])
+            ax.set_ylim(self.bounds[2:])
+
+            del diversities, reco_diversities, merged
+
+        # Name the axes and set spaces
+        fig.set_constrained_layout_pads(w_pad=0.01, wspace=0.03)
+        fig.supxlabel('organic diversity')
+        fig.supylabel('recommendation diversity')
+
+        # Create the colorbar
+        norm = colors.LogNorm(vmin=volume.min(), vmax=volume.max())
+        fig.colorbar(
+            cm.ScalarMappable(norm=norm, cmap='viridis'),
+            ax=axes[:],
+            location='top',
+            label='user listening volume',
+            shrink=.7,
+            pad=.1
+        )
+
+        fig.savefig(self.output()['png'].path, format='png', dpi=300)
+        fig.savefig(self.output()['eps'].path)
 
         pl.clf()
-
-        del diversities, reco_diversities, merged
 
 
 # Rest is now deprecated

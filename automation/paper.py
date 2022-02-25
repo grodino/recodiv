@@ -2,14 +2,40 @@ from typing import List
 
 import luigi
 import numpy as np
+from matplotlib import pyplot as pl
 
 from automation.config import *
 from automation.tasks.dataset import DatasetInfo, MsdDataset
 from automation.tasks.traintest import ComputeTrainTestUserDiversity, GenerateTrainTest, TrainTestInfo
 from automation.tasks.hyperparameter import PlotRecommendationDiversityVsHyperparameter
 from automation.tasks.model import EvaluateModel, EvaluateUserRecommendations, GeneratePredictions, GenerateRecommendations, PlotModelTuning, PlotTrainLoss, TrainModel
-from automation.tasks.recommendations import BuildRecommendationGraph, BuildRecommendationsWithListeningsGraph, ComputeRecommendationDiversities, ComputeRecommendationWithListeningsUsersDiversities, ComputeRecommendationWithListeningsUsersDiversityIncrease, PlotRecommendationsUsersDiversitiesHistogram, PlotUserDiversityIncreaseVsUserDiversity
+from automation.tasks.recommendations import BuildRecommendationGraph, BuildRecommendationsWithListeningsGraph, ComputeRecommendationDiversities, ComputeRecommendationWithListeningsUsersDiversities, ComputeRecommendationWithListeningsUsersDiversityIncrease, PlotRecommendationDiversityVsUserDiversity, PlotRecommendationsUsersDiversitiesHistogram, PlotUserDiversityIncreaseVsUserDiversity
 from recodiv.utils import axes_to_grid
+
+
+pl.rcParams.update({
+    # "figure.figsize": [.6*6.4, .6*4.8],     # change figure default size
+    # "figure.figsize": [1.2*6.4, 1.2*4.8],     # change figure default size
+    "savefig.bbox": "tight",                # image fitted to the figure
+    # grid lines for major and minor ticks
+    "lines.linewidth": .7,                  # reduce linewidth to better see the points
+    "font.family": "serif",                 # use serif/main font for text elements
+    "font.size": 9,
+    "legend.title_fontsize": 9,
+    "legend.fontsize": 9,
+    "mathtext.fontset": "dejavuserif",      # use serif font for math elements
+    # "text.usetex": True,                    # use inline math for ticks
+    # "pgf.rcfonts": False,                   # don't setup fonts from rc parameters
+    # "pgf.preamble": "\n".join([
+    #     r"\usepackage{url}",                # load additional packages
+    #     r"\usepackage{unicode-math}",       # unicode math setup
+    #     # r"\setmainfont{DejaVu Serif}",      # serif font via preamble
+    #     r"\renewcommand{\rmdefault}{ptm}",
+    #     r"\renewcommand{\sfdefault}{phv}",
+    #     r"\usepackage{pifont}",
+    #     r"\usepackage{mathptmx}",
+    # ])
+})
 
 
 def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
@@ -106,6 +132,14 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 model=model,
                 n_recommendations=10,
                 alpha=2,
+                fold_id=0,
+            ),
+            PlotRecommendationDiversityVsUserDiversity(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                n_recommendations=10,
+                alpha_values=[0, 2, float('inf')],
                 fold_id=0,
             ),
             BuildRecommendationsWithListeningsGraph(
