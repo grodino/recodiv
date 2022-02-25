@@ -230,8 +230,10 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
             models=models,
             split=split,
             fold_id=2,
-            alpha=2,
-            n_recommendations_values=[10, ]
+            alpha_values=[0, 2, float('inf')],
+            n_recommendations_values=[10, 50, 100],
+            # n_recommendations_ndcg=10,
+            n_recommendations_ndcg=50,
         ))
 
         # Diversity vs regularization
@@ -251,13 +253,15 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
             models=models,
             split=split,
             fold_id=2,
-            alpha=2,
-            n_recommendations_values=[10, ]
+            alpha_values=[0, 2, float('inf')],
+            n_recommendations_values=[10, 50, 100],
+            # n_recommendations_ndcg=10
+            n_recommendations_ndcg=50
         ))
 
         return tasks
 
-    return data_info() + test_single_model()
+    return diversity_vs_parameters()
 
 
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:

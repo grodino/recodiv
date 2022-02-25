@@ -1,12 +1,13 @@
-import json
 from pathlib import Path
+from typing import List
 
 import luigi
-from luigi.format import Nop
+from matplotlib.axes import Axes
 import tikzplotlib
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as pl
+from matplotlib import ticker
 
 from recodiv.utils import generate_graph
 from recodiv.utils import generate_recommendations_graph
@@ -80,12 +81,17 @@ class ComputeRecommendationDiversityVsHyperparameter(luigi.Task):
                              for model in self.models]
         regularization = self.models[0]['regularization']
 
-        return luigi.LocalTarget(aggregated.joinpath(
-            f'{self.n_recommendations_values}recommendations'
-            f'_diversity{self.alpha}'
-            f'_vs_{hyperparam_values}{self.hyperparameter}'
-            f'_{regularization}reg.csv'
-        ))
+        # Convert array to tuple to avoid "[" and "]" in paths which could be
+        # interpreted as wildcards
+        return luigi.LocalTarget(
+            aggregated.joinpath(
+                f'{self.n_recommendations_values}recommendations'
+                f'_diversity{self.alpha}'
+                f'_vs_{tuple(hyperparam_values)}{self.hyperparameter}'
+                f'_{regularization}reg.csv'
+            ),
+            format=luigi.format.Nop
+        )
 
     def run(self):
         self.output().makedirs()
@@ -144,36 +150,41 @@ class PlotRecommendationDiversityVsHyperparameter(luigi.Task):
         default=0, description='Select the fold_id\'th train/test pair'
     )
 
-    alpha = luigi.parameter.FloatParameter(
-        default=2, description="The true diversity order"
+    alpha_values = luigi.parameter.ListParameter(
+        description="List of diversity order"
     )
     n_recommendations_values = luigi.parameter.ListParameter(
         description='List of number of recommendation to generate for each user'
     )
+    n_recommendations_ndcg = luigi.parameter.IntParameter(
+        default=10, description='The number of recommendations to use for the NDCG evaluation'
+    )
 
     def requires(self):
-        req = {}
+        req = {
+            'diversity': []
+        }
 
+        # Get the model evaluation for all the hyperparameter values
         for model in self.models:
-            # TODO: remove the hard-coded n_recommendations value by the
-            # n_recommendations_values values. Ex: ndcg is not the same for
-            # different values of n_recommendations.
             req[model[self.hyperparameter]] = EvaluateModel(
                 dataset=self.dataset,
                 model=model,
                 split=self.split,
-                n_recommendations=10
+                n_recommendations=self.n_recommendations_ndcg
             )
 
-        req['diversity'] = ComputeRecommendationDiversityVsHyperparameter(
-            dataset=self.dataset,
-            hyperparameter=self.hyperparameter,
-            alpha=self.alpha,
-            models=self.models,
-            split=self.split,
-            fold_id=self.fold_id,
-            n_recommendations_values=self.n_recommendations_values,
-        )
+        # Get the diversity values for the different values of alpha
+        for alpha in self.alpha_values:
+            req['diversity'].append(ComputeRecommendationDiversityVsHyperparameter(
+                dataset=self.dataset,
+                hyperparameter=self.hyperparameter,
+                alpha=alpha,
+                models=self.models,
+                split=self.split,
+                fold_id=self.fold_id,
+                n_recommendations_values=self.n_recommendations_values,
+            ))
 
         return req
 
@@ -186,75 +197,132 @@ class PlotRecommendationDiversityVsHyperparameter(luigi.Task):
         regularization = self.models[0]['regularization']
 
         return {
-            'png': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations_values}recommendations'
-                f'_diversity{self.alpha}'
-                f'_vs_{hyperparam_values}{self.hyperparameter}'
-                f'_{regularization}reg.png'
-            )),
-            'latex': luigi.LocalTarget(figures.joinpath(
-                f'{self.n_recommendations_values}recommendations'
-                f'_diversity{self.alpha}'
-                f'_vs_{hyperparam_values}{self.hyperparameter}'
-                f'_{regularization}reg.tex'
-            )),
+            # Convert array to tuple to avoid "[" and "]" in paths which could be
+            # interpreted as wildcards
+            'png': luigi.LocalTarget(
+                figures.joinpath(
+                    f'{self.n_recommendations_values}recommendations'
+                    f'_ndcg{self.n_recommendations_ndcg}'
+                    f'_diversity{self.alpha_values}'
+                    f'_vs_{tuple(hyperparam_values)}{self.hyperparameter}'
+                    f'_{regularization}reg.png'
+                ),
+                format=luigi.format.Nop
+            ),
+            'eps': luigi.LocalTarget(
+                figures.joinpath(
+                    f'{self.n_recommendations_values}recommendations'
+                    f'_ndcg{self.n_recommendations_ndcg}'
+                    f'_diversity{self.alpha_values}'
+                    f'_vs_{tuple(hyperparam_values)}{self.hyperparameter}'
+                    f'_{regularization}reg.eps'
+                ),
+                format=luigi.format.Nop
+            ),
         }
 
     def run(self):
         self.output()['png'].makedirs()
-        data: pd.DataFrame = pd.read_csv(
-            self.input()['diversity'].path, index_col=0)
 
-        data = data[1:].set_index(self.hyperparameter)
-        data['ndcg'] = 0
-
-        # Assuming the n_factors paramets all differ in the models
+        # Assuming the n_factors parameters all differ in the models
         hyperparam_values = [model[self.hyperparameter]
                              for model in self.models]
+        letters = ['a)', 'b)', 'c)', 'd)']
+        n_alphas = len(self.alpha_values)
+        n_recos = len(self.n_recommendations_values)
 
-        for hyperparam in hyperparam_values[1:]:
-            metric = pd.read_json(
-                self.input()[hyperparam].path,
-                orient='index'
-            )
-            data.loc[hyperparam, 'ndcg'] = metric['ndcg'][0]
+        fig, axes = pl.subplots(
+            1, n_alphas,
+            # constrained_layout=True,
+            figsize=((2 * 6.4), 4.8),
+            dpi=600
+        )
+        axes_flat: List[Axes] = axes.flatten()
 
-        # data = data.subtract(data.min())
-        # data = data.divide(data.max())
-        data = data.reset_index()
-
-        _, ax = pl.subplots(1, 1)
-
-        for n_reco in self.n_recommendations_values:
-            data.plot(
-                ax=ax,
-                x=self.hyperparameter,
-                y=f'{n_reco} recommendations',
-                xlabel=self.hyperparameter,
-                ylabel='diversity',
-                logx=True,
-                style='-',
-                linewidth='1',
+        for i_alpha, (alpha, ax) in enumerate(zip(self.alpha_values, axes_flat)):
+            data: pd.DataFrame = pd.read_csv(
+                self.input()['diversity'][i_alpha].path,
+                index_col=0
             )
 
-        ndcg_ax = ax.twinx()
-        data.plot(
-            ax=ndcg_ax,
-            x=self.hyperparameter,
-            y='ndcg',
-            xlabel=self.hyperparameter,
-            ylabel='NDCG',
-            logx=True,
-            style='--',
-            linewidth='2',
-            color='black',
-            legend='NDCG @ 10'
+            data = data[1:].set_index(self.hyperparameter)
+            data['ndcg'] = 0
+
+            for hyperparam in hyperparam_values[1:]:
+                metric = pd.read_json(
+                    self.input()[hyperparam].path,
+                    orient='index'
+                )
+                data.loc[hyperparam, 'ndcg'] = metric['ndcg'][0]
+
+            data = data.reset_index()
+
+            # Fix the display value of alpha and set the title
+            alpha = float(alpha)
+            if alpha.is_integer():
+                alpha = f'{int(alpha)}'
+            elif alpha == float('inf'):
+                alpha = '+\infty'
+
+            ax.set_box_aspect(1/1.3333333)
+            ax.set_title(f'{letters[i_alpha]} $\\alpha = {alpha}$')
+            # pl.ticklabel_format(axis='x', style='plain')
+
+            for n_reco in self.n_recommendations_values:
+                data[f'{n_reco} recommendations'] = data[f'{n_reco} recommendations'].subtract(
+                    data[f'{n_reco} recommendations'].min()
+                )
+                data[f'{n_reco} recommendations'] = data[f'{n_reco} recommendations'].divide(
+                    data[f'{n_reco} recommendations'].max()
+                )
+
+                ax.plot(
+                    np.log10(data[self.hyperparameter]),
+                    data[f'{n_reco} recommendations'],
+                    '-+',
+                    linewidth='1',
+                    label=f'{n_reco} recommendations'
+                )
+
+            ax.set_xticks(np.log10(data[self.hyperparameter]))
+            ax.set_xticklabels([
+                str(round(10**tick, 2)) for tick in np.log10(data[self.hyperparameter])
+            ])
+
+            ndcg_ax = ax.twinx()
+            ndcg_ax.plot(
+                np.log10(data[self.hyperparameter]),
+                data['ndcg'],
+                '--',
+                linewidth=2,
+                color='black',
+                label=f'NDCG @ {self.n_recommendations_ndcg}'
+            )
+
+            ndcg_ax.set_yticklabels([])
+
+        # Re-add the tick labels for the last figure
+        ndcg_ax.set_yticklabels([
+            round(tick, 2) for tick in ndcg_ax.get_yticks()
+        ])
+
+        # Add the NDCG y label to the last figure
+        ndcg_ax.set_ylabel('NDCG')
+
+        # Add the diversity y label to the fist figure
+        axes[0].set_ylabel('diversity (scaled)')
+
+        # Add the x label
+        fig.supxlabel(self.hyperparameter)
+
+        fig.legend(
+            handles=ax.get_lines() + ndcg_ax.get_lines(),
+            ncol=n_recos + 1,
+            loc='upper center'
         )
 
-        ax.legend(loc=4)
-
-        pl.savefig(self.output()['png'].path, format='png', dpi=300)
-        tikzplotlib.save(self.output()['latex'].path)
+        fig.savefig(self.output()['png'].path, format='png', dpi=600)
+        fig.savefig(self.output()['eps'].path)
 
 
 # Deprecated
