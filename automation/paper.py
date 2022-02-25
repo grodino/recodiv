@@ -8,7 +8,7 @@ from automation.tasks.dataset import DatasetInfo, MsdDataset
 from automation.tasks.traintest import ComputeTrainTestUserDiversity, GenerateTrainTest, TrainTestInfo
 from automation.tasks.hyperparameter import PlotRecommendationDiversityVsHyperparameter
 from automation.tasks.model import EvaluateModel, EvaluateUserRecommendations, GeneratePredictions, GenerateRecommendations, PlotModelTuning, PlotTrainLoss, TrainModel
-from automation.tasks.recommendations import BuildRecommendationGraph, BuildRecommendationsWithListeningsGraph, ComputeRecommendationDiversities, ComputeRecommendationWithListeningsUsersDiversities, ComputeRecommendationWithListeningsUsersDiversityIncrease, PlotUserDiversityIncreaseVsUserDiversity
+from automation.tasks.recommendations import BuildRecommendationGraph, BuildRecommendationsWithListeningsGraph, ComputeRecommendationDiversities, ComputeRecommendationWithListeningsUsersDiversities, ComputeRecommendationWithListeningsUsersDiversityIncrease, PlotRecommendationsUsersDiversitiesHistogram, PlotUserDiversityIncreaseVsUserDiversity
 from recodiv.utils import axes_to_grid
 
 
@@ -97,13 +97,22 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 dataset=msd_dataset,
                 split=split,
                 model=model,
-                n_recommendations=10
+                n_recommendations=10,
+                alpha=2,
+            ),
+            PlotRecommendationsUsersDiversitiesHistogram(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                n_recommendations=10,
+                alpha=2,
+                fold_id=0,
             ),
             BuildRecommendationsWithListeningsGraph(
                 dataset=msd_dataset,
                 split=split,
                 model=model,
-                n_recommendations=10
+                n_recommendations=10,
             ),
             ComputeRecommendationWithListeningsUsersDiversities(
                 dataset=msd_dataset,

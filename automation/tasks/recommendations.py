@@ -156,7 +156,6 @@ class ComputeRecommendationDiversities(luigi.Task):
             del graph, diversities
 
 
-# WIP
 class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
     """Plot the histogram of recommendations diversity for each user"""
 
@@ -188,12 +187,14 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
             alpha=self.alpha,
             model=self.model,
             split=self.split,
-            fold_id=self.fold_id,
             n_recommendations=self.n_recommendations
         )
 
     def output(self):
-        figures = Path(self.input().path).parent.joinpath('figures')
+        figures = Path(
+            self.input()[self.fold_id].path
+        ).parent.joinpath('figures')
+
         return luigi.LocalTarget(figures.joinpath(
             f'{self.n_recommendations}-recommendation_user_diversity{self.alpha}_histogram.png'
         ))
@@ -201,9 +202,12 @@ class PlotRecommendationsUsersDiversitiesHistogram(luigi.Task):
     def run(self):
         self.output().makedirs()
 
-        diversities = pd.read_csv(self.input().path)
+        diversities = pd.read_csv(self.input()[self.fold_id].path)
         fig, ax = plot_histogram(
-            diversities['diversity'].to_numpy(), min_quantile=0, max_quantile=1)
+            diversities['diversity'].to_numpy(),
+            min_quantile=0,
+            max_quantile=1
+        )
 
         ax.set_xlabel('Diversity index')
         ax.set_ylabel('User count')
