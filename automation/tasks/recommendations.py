@@ -91,7 +91,6 @@ class BuildRecommendationGraph(luigi.Task):
             del graph
 
 
-# WIP
 class ComputeRecommendationDiversities(luigi.Task):
     """Compute the diversity of the songs recommended to users"""
 
@@ -119,34 +118,42 @@ class ComputeRecommendationDiversities(luigi.Task):
             dataset=self.dataset,
             model=self.model,
             split=self.split,
-            fold_id=self.fold_id,
             n_recommendations=self.n_recommendations
         )
 
     def output(self):
-        model = Path(self.input().path).parent
+        out = []
 
         # Avoid issues where 0.0 and 0 lead to different file titles
         alpha = float(self.alpha)
         alpha = int(alpha) if alpha.is_integer() else alpha
 
-        return luigi.LocalTarget(
-            model.joinpath(
-                f'recommendations-{self.n_recommendations}-users_diversities{alpha}.csv')
-        )
+        for fold_id in range(self.split['n_fold']):
+            model = Path(self.input()[fold_id].path).parent
+
+            out.append(luigi.LocalTarget(
+                model.joinpath(
+                    f'recommendations-{self.n_recommendations}-users_diversities{alpha}.csv')
+            ))
+
+        return out
 
     def run(self):
-        graph = IndividualHerfindahlDiversities.recall(self.input().path)
+        for out in self.output():
+            out.makedirs()
 
-        graph.normalise_all()
-        diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
+        for fold_id, graph_file in enumerate(self.input()):
+            graph = IndividualHerfindahlDiversities.recall(graph_file.path)
 
-        pd.DataFrame({
-            'user': list(diversities.keys()),
-            'diversity': list(diversities.values())
-        }).to_csv(self.output().path, index=False)
+            graph.normalise_all()
+            diversities = graph.diversities((0, 1, 2), alpha=self.alpha)
 
-        del graph, diversities
+            pd.DataFrame({
+                'user': list(diversities.keys()),
+                'diversity': list(diversities.values())
+            }).to_csv(self.output()[fold_id].path, index=False)
+
+            del graph, diversities
 
 
 # WIP

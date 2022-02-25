@@ -8,7 +8,7 @@ from automation.tasks.dataset import DatasetInfo, MsdDataset
 from automation.tasks.traintest import ComputeTrainTestUserDiversity, GenerateTrainTest, TrainTestInfo
 from automation.tasks.hyperparameter import PlotRecommendationDiversityVsHyperparameter
 from automation.tasks.model import EvaluateModel, EvaluateUserRecommendations, GeneratePredictions, GenerateRecommendations, PlotModelTuning, PlotTrainLoss, TrainModel
-from automation.tasks.recommendations import BuildRecommendationGraph, BuildRecommendationsWithListeningsGraph, ComputeRecommendationWithListeningsUsersDiversities, ComputeRecommendationWithListeningsUsersDiversityIncrease, PlotUserDiversityIncreaseVsUserDiversity
+from automation.tasks.recommendations import BuildRecommendationGraph, BuildRecommendationsWithListeningsGraph, ComputeRecommendationDiversities, ComputeRecommendationWithListeningsUsersDiversities, ComputeRecommendationWithListeningsUsersDiversityIncrease, PlotUserDiversityIncreaseVsUserDiversity
 from recodiv.utils import axes_to_grid
 
 
@@ -88,6 +88,12 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 n_recommendations=10
             ),
             BuildRecommendationGraph(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                n_recommendations=10
+            ),
+            ComputeRecommendationDiversities(
                 dataset=msd_dataset,
                 split=split,
                 model=model,
