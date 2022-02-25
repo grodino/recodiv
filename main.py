@@ -4,9 +4,9 @@ from automation.config import *
 from automation.interactive import *
 from automation.paper import dev_tasks
 from automation.paper import paper_figures
-from automation.msd_dataset import MsdDataset
-from automation.msd_dataset import DeleteAllModelFigures
-from automation.msd_dataset import DeleteAllModelAnalysis
+from automation.tasks.dataset import MsdDataset
+from automation.tasks.utils import DeleteAllModelFigures
+from automation.tasks.utils import DeleteAllModelAnalysis
 
 
 @click.group()

@@ -9,11 +9,11 @@ from dash.dependencies import Output
 import plotly.express as px
 
 from automation.config import *
-from automation.msd_dataset import AnalyseUser
-from automation.msd_dataset import ComputeDiversityIncreaseVsUserDiversityVsRecoVolume
-from automation.msd_dataset import ComputeDiversityIncreaseVsUserDiversityVsLatentFactors
-from automation.msd_dataset import ComputeRecommendationDiversityVsUserDiversityVsRecoVolume
-from automation.msd_dataset import ComputeRecommendationDiversityVsUserDiversityVsLatentFactors
+from automation.tasks.interactive import AnalyseUser
+from automation.tasks.interactive import ComputeDiversityIncreaseVsUserDiversityVsRecoVolume
+from automation.tasks.interactive import ComputeDiversityIncreaseVsUserDiversityVsLatentFactors
+from automation.tasks.interactive import ComputeRecommendationDiversityVsUserDiversityVsRecoVolume
+from automation.tasks.interactive import ComputeRecommendationDiversityVsUserDiversityVsLatentFactors
 
 
 def reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler=False):
