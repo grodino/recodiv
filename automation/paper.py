@@ -83,6 +83,12 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 split=split,
                 n_recommendations=10
             ),
+            BuildRecommendationGraph(
+                dataset=msd_dataset,
+                split=split,
+                model=model,
+                n_recommendations=10
+            ),
             BuildRecommendationsWithListeningsGraph(
                 dataset=msd_dataset,
                 split=split,
@@ -110,7 +116,7 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 model=model,
                 n_recommendations_values=[10, 50, 100],
                 alpha_values=[0, 2, float('inf')],
-            )
+            ),
         ]
 
     def test_hyperparameter_grid():

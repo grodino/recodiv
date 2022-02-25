@@ -1699,7 +1699,6 @@ class PlotModelEvaluationVsLatentFactors(luigi.Task):
 ################################################################################
 # RECOMMENDATIONS ANALYSIS                                                     #
 ################################################################################
-# WIP
 class BuildRecommendationGraph(luigi.Task):
     """Build the user-song-tag graph for the recommendations.
 
@@ -1717,46 +1716,56 @@ class BuildRecommendationGraph(luigi.Task):
     split = luigi.parameter.DictParameter(
         description='Name and parameters of the split to use'
     )
-    fold_id = luigi.parameter.IntParameter(
-        default=0, description='Select the fold_id\'th train/test pair'
-    )
 
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
     )
 
     def requires(self):
-        return {
+        req = {
             'dataset': ImportDataset(self.dataset),
-            'recommendations': GenerateRecommendations(
+            'recommendations': [],
+        }
+
+        for fold_id in range(self.split['n_fold']):
+            req['recommendations'].append(GenerateRecommendations(
                 dataset=self.dataset,
                 model=self.model,
                 split=self.split,
-                fold_id=self.fold_id,
+                fold_id=fold_id,
                 n_recommendations=self.n_recommendations
-            ),
-        }
+            ))
+
+        return req
 
     def output(self):
-        model = Path(self.input()['recommendations'].path).parent
+        out = []
 
-        return luigi.LocalTarget(
-            model.joinpath(
-                f'recommendations-{self.n_recommendations}-graph.pk'),
-            format=Nop
-        )
+        for fold_id in range(self.split['n_fold']):
+            model = Path(self.input()['recommendations'][fold_id].path).parent
+
+            out.append(luigi.LocalTarget(
+                model.joinpath(
+                    f'recommendations-{self.n_recommendations}-graph.pk'),
+                format=Nop
+            ))
+
+        return out
 
     def run(self):
-        self.output().makedirs()
+        for out in self.output():
+            out.makedirs()
 
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
-        recommendations: pd.DataFrame = pd.read_csv(
-            self.input()['recommendations'].path)
 
-        graph = generate_recommendations_graph(recommendations, item_tag)
-        graph.persist(self.output().path)
+        for fold_id, recommendations_file in enumerate(self.input()['recommendations']):
+            recommendations: pd.DataFrame = pd.read_csv(
+                recommendations_file.path)
 
-        del graph
+            graph = generate_recommendations_graph(recommendations, item_tag)
+            graph.persist(self.output()[fold_id].path)
+
+            del graph
 
 
 # WIP
@@ -2097,7 +2106,6 @@ class ComputeRecommendationWithListeningsUsersDiversityIncrease(luigi.Task):
             del original, deltas
 
 
-# WIP
 class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
     """Plot the user diversity increase with respect to the user diversity
        before recommendations"""
@@ -2292,7 +2300,7 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         del diversities, increase, merged
 
 
-# Rest is now deprecated
+# WIP
 class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
     """Plot the diversity of the recommendations associated to each user with
     respect to the user diversity before recommendations (ie train set
@@ -2421,6 +2429,7 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
         del diversities, reco_diversities, merged
 
 
+# Rest is now deprecated
 class PlotDiversitiesIncreaseHistogram(luigi.Task):
     """Plot the histogram of recommendations diversity for each user"""
 
