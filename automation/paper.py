@@ -275,6 +275,13 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
     ]
 
     # Recommendation diversity increase vs organic diversity at equilibrium and variations
+    USERS = [
+        '165300f45335433b38053f9b3617cc4eadaa2ecf',
+        '767153bf012dfe221b8bd8d45aa7d649aa37845a',
+        'e6cdf0de3904fc6f40171a55eaa871503593cb06',
+        'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
+    ]
+
     tasks += [
         # Herfindal
         PlotUserDiversityIncreaseVsUserDiversity(
@@ -285,12 +292,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=50,
             bounds=[0, 75, -40, 40],
-            users=[
-                '165300f45335433b38053f9b3617cc4eadaa2ecf',
-                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
-                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
-                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
-            ],
+            users=USERS,
             show_colorbar=False
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
@@ -301,12 +303,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=500,
             bounds=[0, 75, -40, 40],
-            users=[
-                '165300f45335433b38053f9b3617cc4eadaa2ecf',
-                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
-                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
-                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
-            ],
+            users=USERS,
             show_colorbar=False
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
@@ -317,12 +314,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=10,
             bounds=[0, 75, -40, 40],
-            users=[
-                '165300f45335433b38053f9b3617cc4eadaa2ecf',
-                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
-                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
-                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
-            ],
+            users=USERS,
             show_colorbar=False
         ),
         # Richness
@@ -334,12 +326,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=50,
             bounds=[-25, 800, -10, 1_000],
-            users=[
-                '165300f45335433b38053f9b3617cc4eadaa2ecf',
-                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
-                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
-                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
-            ],
+            users=USERS,
             show_colorbar=True
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
@@ -350,12 +337,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=500,
             bounds=[-15, 800, -10, 1_000],
-            users=[
-                '165300f45335433b38053f9b3617cc4eadaa2ecf',
-                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
-                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
-                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
-            ],
+            users=USERS,
             show_colorbar=False
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
@@ -366,12 +348,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=10,
             bounds=[-15, 800, -10, 1_000],
-            users=[
-                '165300f45335433b38053f9b3617cc4eadaa2ecf',
-                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
-                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
-                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
-            ],
+            users=USERS,
             show_colorbar=False
         ),
         # Berger-Parker
@@ -383,12 +360,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=50,
             bounds=[0, 25, -25, 15],
-            users=[
-                '165300f45335433b38053f9b3617cc4eadaa2ecf',
-                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
-                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
-                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
-            ],
+            users=USERS,
             show_colorbar=False
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
@@ -399,12 +371,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=500,
             bounds=[0, 25, -25, 15],
-            users=[
-                '165300f45335433b38053f9b3617cc4eadaa2ecf',
-                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
-                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
-                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
-            ],
+            users=USERS,
             show_colorbar=False
         ),
         PlotUserDiversityIncreaseVsUserDiversity(
@@ -415,15 +382,24 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
             model_regularization=OPT_REGULARIZATION,
             n_recommendations=10,
             bounds=[0, 25, -25, 15],
-            users=[
-                '165300f45335433b38053f9b3617cc4eadaa2ecf',
-                '767153bf012dfe221b8bd8d45aa7d649aa37845a',
-                'e6cdf0de3904fc6f40171a55eaa871503593cb06',
-                'c0d9b4c9ca33db5a3a90fcf0072727ee0758a9c0',
-            ],
+            users=USERS,
             show_colorbar=False
         ),
     ]
+
+    # Analyse individual users
+    for n_recommendations in (10, 50, 500):
+        for user in USERS:
+            tasks.append(AnalyseUser(
+                dataset=msd_dataset,
+                user_id=user,
+                model_n_iterations=N_ITERATIONS,
+                model_n_factors=OPT_N_FACTORS,
+                model_regularization=OPT_REGULARIZATION,
+                n_recommendations=n_recommendations,
+                alpha_values=[0, 2, float('inf')],
+                return_info=False,
+            ))
 
     # Recommendation diversity vs organic diversity at equilibrium and variations
     tasks += [
@@ -458,7 +434,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
     ]
 
     # Recommendation diversity vs recommendation volume at equilibrium
-    tasks += [
+    deprecated = [
         # Herfindal diversity
         PlotDiversityVsRecommendationVolume(
             dataset=msd_dataset,
@@ -517,7 +493,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
     ]
 
     # Recommendation diversity versus the number of latent factors used in the model
-    tasks += [
+    canceled = [
         PlotRecommendationDiversityVsLatentFactors(
             dataset=msd_dataset,
             alpha=2,
@@ -545,7 +521,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
     ]
 
     # Recommendation diversity versus the regularization factor used in the model
-    tasks += [
+    canceled = [
         PlotDiversityVsRegularization(
             dataset=msd_dataset,
             model_n_iterations=N_ITERATIONS,
@@ -556,7 +532,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
     ]
 
     # Diversity increase versus the number of latent factors used in the model
-    tasks += [
+    canceled = [
         # Herfindal
         PlotDiversityIncreaseVsLatentFactors(
             dataset=msd_dataset,
@@ -611,7 +587,7 @@ def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
     ]
 
     # Diversity increase versus the regularization factor used in the model
-    tasks += [
+    canceled = [
         # Herfindal
         PlotDiversityIncreaseVsRegularization(
             dataset=msd_dataset,

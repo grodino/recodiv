@@ -4183,9 +4183,17 @@ class AnalyseUser(luigi.Task):
     n_recommendations = luigi.parameter.IntParameter(
         default=50, description='Number of recommendation to generate per user'
     )
+    alpha_values = luigi.parameter.ListParameter(
+        description="List of diversity order values to consider"
+    )
+
+    return_info = luigi.parameter.BoolParameter(
+        default=True,
+        description='Whether to return the info and distributions'
+    )
 
     def requires(self):
-        return {
+        req = {
             'dataset': ImportDataset(dataset=self.dataset),
             'train_test': GenerateTrainTest(
                 dataset=self.dataset,
@@ -4219,60 +4227,53 @@ class AnalyseUser(luigi.Task):
                 model_user_fraction=self.model_user_fraction,
                 n_recommendations=self.n_recommendations
             ),
+            'diversity': [],
+            'recommendation_diversity': [],
+            'diversity_after_reco': [],
         }
+
+        for alpha in self.alpha_values:
+            req['diversity'].append(ComputeTrainTestUserDiversity(
+                dataset=self.dataset,
+                alpha=alpha,
+                user_fraction=self.model_user_fraction,
+            ))
+
+            req['recommendation_diversity'].append(ComputeRecommendationDiversities(
+                dataset=self.dataset,
+                alpha=alpha,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations,
+            ))
+
+            req['diversity_after_reco'].append(ComputeRecommendationWithListeningsUsersDiversities(
+                dataset=self.dataset,
+                alpha=alpha,
+                model_n_iterations=self.model_n_iterations,
+                model_n_factors=self.model_n_factors,
+                model_regularization=self.model_regularization,
+                model_user_fraction=self.model_user_fraction,
+                n_recommendations=self.n_recommendations,
+            ))
+
+        return req
 
     def output(self):
         model = Path(self.input()['recommendations'].path).parent
-        return luigi.LocalTarget(model.joinpath(f'user_{self.user_id}-info.json'))
+        return luigi.LocalTarget(model.joinpath(
+            f'{self.alpha_values}alpha'
+            f'-{self.n_recommendations}reco'
+            f'-user_{self.user_id}-info.json'
+        ))
 
     def run(self):
         test = pd.read_csv(self.input()['train_test']['test'].path)
         item_tag = pd.read_csv(self.input()['dataset']['item_tag'].path)
         recommendations = pd.read_csv(self.input()['recommendations'].path)
         song_info = get_msd_song_info()
-
-        # Compute the bipartite projection of the user graph on the tags layer
-        test_graph = IndividualHerfindahlDiversities.recall(
-            self.input()['train_test_graph']['test'].path
-        )
-        test_graph.normalise_all()
-        distribution = test_graph.spread_node(
-            self.user_id, (0, 1, 2)
-        )
-        listened_tag_distribution = pd.Series(distribution) \
-            .sort_values(ascending=False)
-
-        dist = np.array(listened_tag_distribution)
-        dist = dist / np.sum(dist)
-        print('ORGANIC DIVERSITY 2', 1 / np.sum(dist**2))
-        print('ORGANIC DIVERSITY 0', len(dist))
-
-        # TEST
-        reco_listen_graph = IndividualHerfindahlDiversities.recall(
-            self.input()['recommendation_with_listen'].path
-        )
-        reco_listen_graph.normalise_all()
-        distribution = reco_listen_graph.spread_node(
-            self.user_id, (0, 1, 2)
-        )
-        print('N_TAGS', len(distribution))
-        print('DIV manual', sum(1 for x in distribution.values() if x > 0))
-        print('DIVERSITY all', reco_listen_graph.diversities(
-            (0, 1, 2), alpha=0)[self.user_id])
-        print('SUM', sum(distribution.values()))
-        print(distribution)
-
-        # Compute the bipartite projection of the recommendation graph on the
-        # tags layer
-        recommendation_graph = IndividualHerfindahlDiversities.recall(
-            self.input()['recommendation_graph'].path
-        )
-        recommendation_graph.normalise_all()
-        distribution = recommendation_graph.spread_node(
-            self.user_id, (0, 1, 2)
-        )
-        recommended_tag_distribution = pd.Series(distribution) \
-            .sort_values(ascending=False)
 
         def track_id_to_dict(track_ids):
             items = {}
@@ -4291,7 +4292,35 @@ class AnalyseUser(luigi.Task):
             'model_n_factors': self.model_n_factors,
             'model_regularization': self.model_regularization,
             'model_user_fraction': self.model_user_fraction,
+            'n_recommendations': self.n_recommendations,
         }
+
+        # Organic diversity
+        info['organic_diversity'] = {}
+        for i, alpha in enumerate(self.alpha_values):
+            diversities = pd.read_csv(
+                self.input()['diversity'][i]['test'].path
+            ).set_index('user')
+            info['organic_diversity'][alpha] = float(
+                diversities.loc[self.user_id]['diversity'])
+
+        # Recommendation diversity
+        info['recommendation_diversity'] = {}
+        for i, alpha in enumerate(self.alpha_values):
+            diversities = pd.read_csv(
+                self.input()['recommendation_diversity'][i].path
+            ).set_index('user')
+            info['recommendation_diversity'][alpha] = float(
+                diversities.loc[self.user_id]['diversity'])
+
+        # Recommendation + listennings diversity
+        info['diversity_after_reco'] = {}
+        for i, alpha in enumerate(self.alpha_values):
+            diversities = pd.read_csv(
+                self.input()['diversity_after_reco'][i].path
+            ).set_index('user')
+            info['diversity_after_reco'][alpha] = float(
+                diversities.loc[self.user_id]['diversity'])
 
         # Listened items
         listened_items = test[test['user'] == self.user_id]
@@ -4323,7 +4352,50 @@ class AnalyseUser(luigi.Task):
         with self.output().open('w') as file:
             json.dump(info, file, indent=4)
 
-        return info, listened_tag_distribution, recommended_tag_distribution
+        if self.return_info:
+            # Compute the bipartite projection of the user graph on the tags layer
+            test_graph = IndividualHerfindahlDiversities.recall(
+                self.input()['train_test_graph']['test'].path
+            )
+            test_graph.normalise_all()
+            distribution = test_graph.spread_node(
+                self.user_id, (0, 1, 2)
+            )
+            listened_tag_distribution = pd.Series(distribution) \
+                .sort_values(ascending=False)
+
+            # dist = np.array(listened_tag_distribution)
+            # dist = dist / np.sum(dist)
+            # print('ORGANIC DIVERSITY 2', 1 / np.sum(dist**2))
+            # print('ORGANIC DIVERSITY 0', len(dist))
+
+            reco_listen_graph = IndividualHerfindahlDiversities.recall(
+                self.input()['recommendation_with_listen'].path
+            )
+            reco_listen_graph.normalise_all()
+            distribution = reco_listen_graph.spread_node(
+                self.user_id, (0, 1, 2)
+            )
+            # print('N_TAGS', len(distribution))
+            # print('DIV manual', sum(1 for x in distribution.values() if x > 0))
+            # print('DIVERSITY all', reco_listen_graph.diversities(
+            #     (0, 1, 2), alpha=0)[self.user_id])
+            # print('SUM', sum(distribution.values()))
+            # print(distribution)
+
+            # Compute the bipartite projection of the recommendation graph on the
+            # tags layer
+            recommendation_graph = IndividualHerfindahlDiversities.recall(
+                self.input()['recommendation_graph'].path
+            )
+            recommendation_graph.normalise_all()
+            distribution = recommendation_graph.spread_node(
+                self.user_id, (0, 1, 2)
+            )
+            recommended_tag_distribution = pd.Series(distribution) \
+                .sort_values(ascending=False)
+
+            return info, listened_tag_distribution, recommended_tag_distribution
 
 
 ################################################################################
