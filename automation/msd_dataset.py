@@ -4299,7 +4299,7 @@ class AnalyseUser(luigi.Task):
         info['organic_diversity'] = {}
         for i, alpha in enumerate(self.alpha_values):
             diversities = pd.read_csv(
-                self.input()['diversity'][i]['test'].path
+                self.input()['diversity'][i]['train'].path
             ).set_index('user')
             info['organic_diversity'][alpha] = float(
                 diversities.loc[self.user_id]['diversity'])
