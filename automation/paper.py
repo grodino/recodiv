@@ -10,6 +10,7 @@ from automation.tasks.traintest import ComputeTrainTestUserDiversity, GenerateTr
 from automation.tasks.hyperparameter import PlotRecommendationDiversityVsHyperparameter
 from automation.tasks.model import EvaluateModel, EvaluateUserRecommendations, GeneratePredictions, GenerateRecommendations, PlotModelTuning, PlotTrainLoss, TrainModel
 from automation.tasks.recommendations import BuildRecommendationGraph, BuildRecommendationsWithListeningsGraph, ComputeRecommendationDiversities, ComputeRecommendationWithListeningsUsersDiversities, ComputeRecommendationWithListeningsUsersDiversityIncrease, PlotRecommendationDiversityVsUserDiversity, PlotRecommendationsUsersDiversitiesHistogram, PlotUserDiversityIncreaseVsUserDiversity
+from automation.tasks.user import AnalyseUser
 from recodiv.utils import axes_to_grid
 
 
@@ -53,6 +54,14 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
         row_fraction=.1
     )
 
+    model = dict(
+        name='implicit-MF',
+        n_iterations=10,
+        n_factors=64,
+        regularization=100.0,
+        confidence_factor=40,
+    )
+
     def data_info():
         return [
             DatasetInfo(dataset=msd_dataset),
@@ -64,14 +73,6 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
         ]
 
     def test_single_model():
-        model = dict(
-            name='implicit-MF',
-            n_iterations=10,
-            n_factors=64,
-            regularization=100.0,
-            confidence_factor=40,
-        )
-
         return [
             GenerateTrainTest(dataset=msd_dataset, split=split),
             TrainTestInfo(dataset=msd_dataset, split=split),
@@ -261,7 +262,20 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
 
         return tasks
 
-    return diversity_vs_parameters()
+    def user_analysis():
+        return [
+            AnalyseUser(
+                dataset=msd_dataset,
+                user_id='9396d98e8d1746d78265d22bb4b8893e7390f12e',
+                model=model,
+                split=split,
+                alpha_values=[0, 2, float('inf')],
+                n_recommendation_values=[10, 50, 100],
+                fold_id=0
+            ),
+        ]
+
+    return user_analysis()
 
 
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:

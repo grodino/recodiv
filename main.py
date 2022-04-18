@@ -1,7 +1,7 @@
 import click
+import luigi
 
 from automation.config import *
-from automation.interactive import *
 from automation.paper import dev_tasks
 from automation.paper import paper_figures
 from automation.tasks.dataset import MsdDataset
@@ -105,69 +105,6 @@ def clear_figures(context):
     input('ARE YOU SURE YOU WANT TO DELETE THE FILES ? Press Enter to continue')
     luigi.build([task], local_scheduler=local_scheduler,
                 log_level='INFO', scheduler_host='127.0.0.1')
-
-
-@cli.group()
-@click.option(
-    '--animated',
-    type=click.Choice(['latent-factors', 'reco-volume']),
-    default='reco-volume',
-    help='Choose the variable to change during the animation'
-)
-@click.option(
-    '--alpha',
-    type=float,
-    default=2,
-    help='The order of the diversity to use.'
-)
-@click.pass_context
-def interactive(context: click.Context, animated: str, alpha: float):
-    """Lauch the interactive graphs server"""
-    context.ensure_object(dict)
-
-    # Avoid issues where 0.0 and 0 lead to different file titles
-    alpha = float(alpha)
-    alpha = int(alpha) if alpha.is_integer() else alpha
-
-    context.obj['animated'] = animated
-    context.obj['alpha'] = alpha
-
-
-@interactive.command()
-@click.pass_context
-def recommendation_diversity(context):
-    n_users = context.obj['n_users']
-    local_scheduler = context.obj['local_scheduler']
-    name = context.obj['name']
-    animated = context.obj['animated']
-
-    msd_dataset = MsdDataset(name, n_users=n_users)
-
-    if animated == 'latent-factors':
-        reco_div_vs_user_div_vs_latent_factors(msd_dataset, local_scheduler)
-
-    elif animated == 'reco-volume':
-        reco_div_vs_user_div_vs_reco_volume(msd_dataset, local_scheduler)
-
-
-@interactive.command()
-@click.pass_context
-def diversity_increase(context):
-    n_users = context.obj['n_users']
-    local_scheduler = context.obj['local_scheduler']
-    name = context.obj['name']
-    animated = context.obj['animated']
-    alpha = context.obj['alpha']
-
-    msd_dataset = MsdDataset(name, n_users=n_users)
-
-    if animated == 'latent-factors':
-        div_increase_vs_user_div_vs_latent_factors(
-            msd_dataset, local_scheduler, alpha)
-
-    elif animated == 'reco-volume':
-        div_increase_vs_user_div_vs_reco_volume(
-            msd_dataset, local_scheduler, alpha)
 
 
 if __name__ == '__main__':
