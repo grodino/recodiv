@@ -57,8 +57,8 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
     model = dict(
         name='implicit-MF',
         n_iterations=10,
-        n_factors=64,
-        regularization=100.0,
+        n_factors=128,
+        regularization=0.01,
         confidence_factor=40,
     )
 
