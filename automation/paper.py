@@ -54,13 +54,30 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
         row_fraction=.1
     )
 
+    # Small models, lots of values
+    # latent_factors = np.logspace(3, 7, 5, base=2, dtype=int)
+    # regularizations = np.logspace(-3, 3, 7)
+
+    # Big models, few values
+    latent_factors = np.array([128, 256, 512], dtype=int)
+    regularizations = np.array([0.0001, 0.005, 0.1], dtype=float)
+    grid = axes_to_grid(latent_factors, regularizations)
+
+    # Optimal model found using grid search
+    OPTIMAL_LATENT_FACTORS = 512
+    OPTIMAL_REGULARIZATION = 0.005
     model = dict(
         name='implicit-MF',
         n_iterations=10,
-        n_factors=128,
-        regularization=0.01,
+        n_factors=512,
+        regularization=0.005,
         confidence_factor=40,
     )
+
+    users = [
+        '019d0d1c7a01f8736ba59a124160e5fc70666db7',  # 32, -21
+        '034824689950821a1b6c71186eea5235dc37639d',  # 18, 21
+    ]
 
     def data_info():
         return [
@@ -74,67 +91,6 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
 
     def test_single_model():
         return [
-            GenerateTrainTest(dataset=msd_dataset, split=split),
-            TrainTestInfo(dataset=msd_dataset, split=split),
-            TrainModel(
-                dataset=msd_dataset,
-                split=split,
-                model=model,
-                fold_id=2,
-            ),
-            PlotTrainLoss(
-                dataset=msd_dataset,
-                split=split,
-                model=model,
-                fold_id=2,
-            ),
-            GenerateRecommendations(
-                dataset=msd_dataset,
-                split=split,
-                model=model,
-                fold_id=2,
-                n_recommendations=10,
-            ),
-            GeneratePredictions(
-                dataset=msd_dataset,
-                split=split,
-                model=model,
-                fold_id=2,
-                train_predictions=True,
-            ),
-            EvaluateUserRecommendations(
-                dataset=msd_dataset,
-                model=model,
-                split=split,
-                n_recommendations=10
-            ),
-            EvaluateModel(
-                dataset=msd_dataset,
-                model=model,
-                split=split,
-                n_recommendations=10
-            ),
-            BuildRecommendationGraph(
-                dataset=msd_dataset,
-                split=split,
-                model=model,
-                n_recommendations=10
-            ),
-            ComputeRecommendationDiversities(
-                dataset=msd_dataset,
-                split=split,
-                model=model,
-                n_recommendations=10,
-                alpha=2,
-            ),
-            PlotRecommendationsUsersDiversitiesHistogram(
-                dataset=msd_dataset,
-                split=split,
-                model=model,
-                n_recommendations=10,
-                alpha=2,
-                fold_id=0,
-            ),
             PlotRecommendationDiversityVsUserDiversity(
                 dataset=msd_dataset,
                 split=split,
@@ -143,26 +99,6 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 alpha_values=[0, 2, float('inf')],
                 fold_id=0,
             ),
-            BuildRecommendationsWithListeningsGraph(
-                dataset=msd_dataset,
-                split=split,
-                model=model,
-                n_recommendations=10,
-            ),
-            ComputeRecommendationWithListeningsUsersDiversities(
-                dataset=msd_dataset,
-                split=split,
-                model=model,
-                n_recommendations=10,
-                alpha=2
-            ),
-            ComputeRecommendationWithListeningsUsersDiversityIncrease(
-                dataset=msd_dataset,
-                split=split,
-                model=model,
-                n_recommendations=10,
-                alpha=2
-            ),
             PlotUserDiversityIncreaseVsUserDiversity(
                 dataset=msd_dataset,
                 split=split,
@@ -170,14 +106,11 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 model=model,
                 n_recommendations_values=[10, 50, 100],
                 alpha_values=[0, 2, float('inf')],
+                users=users,
             ),
         ]
 
     def test_hyperparameter_grid():
-        latent_factors = np.logspace(3, 7, 5, base=2, dtype=int)
-        regularizations = np.logspace(-3, 3, 7)
-        grid = axes_to_grid(latent_factors, regularizations)
-
         models = []
         for n_factors, regularization in grid:
             models.append(dict(
@@ -211,8 +144,6 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
 
     def diversity_vs_parameters():
         tasks = []
-        latent_factors = np.logspace(3, 7, 5, base=2, dtype=int)
-        regularizations = np.logspace(-3, 3, 7)
 
         # Diversity vs n factors
         models = []
@@ -221,7 +152,7 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 name='implicit-MF',
                 n_iterations=10,
                 n_factors=int(n_factors),
-                regularization=regularizations[2],
+                regularization=OPTIMAL_REGULARIZATION,
                 confidence_factor=40,
             ))
 
@@ -243,7 +174,7 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
             models.append(dict(
                 name='implicit-MF',
                 n_iterations=10,
-                n_factors=int(latent_factors[3]),
+                n_factors=OPTIMAL_LATENT_FACTORS,
                 regularization=regularization,
                 confidence_factor=40,
             ))
@@ -257,7 +188,7 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
             alpha_values=[0, 2, float('inf')],
             n_recommendations_values=[10, 50, 100],
             # n_recommendations_ndcg=10
-            n_recommendations_ndcg=50
+            n_recommendations_ndcg=10
         ))
 
         return tasks
@@ -266,16 +197,23 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
         return [
             AnalyseUser(
                 dataset=msd_dataset,
-                user_id='9396d98e8d1746d78265d22bb4b8893e7390f12e',
+                user_id=user_id,
                 model=model,
                 split=split,
                 alpha_values=[0, 2, float('inf')],
                 n_recommendation_values=[10, 50, 100],
                 fold_id=0
-            ),
+            ) for user_id in users
         ]
 
-    return user_analysis()
+    # return user_analysis()
+    return (
+        test_single_model()
+        + user_analysis()
+        + diversity_vs_parameters()
+        + test_hyperparameter_grid()
+        + data_info()
+    )
 
 
 def paper_figures(n_users: int, name: str) -> List[luigi.Task]:
