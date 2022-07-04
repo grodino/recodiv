@@ -489,7 +489,7 @@ class TuneModelHyperparameters(luigi.Task):
         return required
 
     def output(self):
-        aggregated = self.dataset.base_folder.joinpath('aggregated')
+        path = self.dataset.base_folder.joinpath('aggregated/tuning')
 
         factors = list(set(model['n_factors'] for model in self.models))
         regularizations = list(set(
@@ -500,7 +500,7 @@ class TuneModelHyperparameters(luigi.Task):
 
         return {
             'optimal': luigi.LocalTarget(
-                aggregated.joinpath('-'.join((
+                path.joinpath('-'.join((
                     f'{factors_str}_factors',
                     f'{reg_str}_reg',
                     f'{self.n_recommendations}_reco',
@@ -510,7 +510,7 @@ class TuneModelHyperparameters(luigi.Task):
                 format=Nop
             ),
             'metrics': luigi.LocalTarget(
-                aggregated.joinpath('-'.join((
+                path.joinpath('-'.join((
                     f'{factors_str}_factors',
                     f'{reg_str}_reg',
                     f'{self.n_recommendations}_reco',
@@ -593,8 +593,8 @@ class PlotModelTuning(luigi.Task):
         )
 
     def output(self):
-        aggregated = self.dataset.base_folder.joinpath(
-            'aggregated').joinpath('figures')
+        path = self.dataset.base_folder.joinpath(
+            'aggregated/tuning').joinpath('figures')
 
         factors = list(set(model['n_factors'] for model in self.models))
         regularizations = list(set(
@@ -604,7 +604,7 @@ class PlotModelTuning(luigi.Task):
         reg_str = ','.join(map(str, regularizations))
 
         return luigi.LocalTarget(
-            aggregated.joinpath('-'.join((
+            path.joinpath('-'.join((
                 f'{factors_str}_factors',
                 f'{reg_str}_reg',
                 f'{self.n_recommendations}_reco',

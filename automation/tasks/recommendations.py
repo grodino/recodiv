@@ -5,6 +5,7 @@ import luigi
 from luigi.format import Nop
 from matplotlib.axes import Axes
 import tikzplotlib
+import numpy as np
 import pandas as pd
 from matplotlib import colors, cm, figure
 from matplotlib import pyplot as pl
@@ -468,14 +469,6 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
         description="The id of the fold to choose the test data from"
     )
 
-    bounds = luigi.parameter.ListParameter(
-        default=None,
-        description=(
-            "The bounding box of the graph supplied as (x_min, x_max, y_min,"
-            "y_max). If a value is None, leaves matplotlib default"
-        )
-    )
-
     users = luigi.ListParameter(
         default=[], description='Specific users to pinpoint in the graph'
     )
@@ -537,16 +530,29 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
             figsize=(.8*6.4, .8*(4.8 + 1.5)),
             dpi=600
         )
-        flat_axes: List[pl.Axes] = axes.flatten()
+        flat_axes: List[pl.Axes] = axes.flatten('F')
 
         # Compute the min and max volume
         min_volume, max_volume = float('inf'), 0
 
-        for i, ax in enumerate(flat_axes):
+        for i_ax, ax in enumerate(flat_axes):
+            # Retrieve the diversities and increase values
             diversities = pd.read_csv(
-                self.input()['user_diversity'][i][self.fold_id]['test'].path)
-            increase = pd.read_csv(self.input()['diversity_increase'][i][self.fold_id].path).rename(
+                self.input()['user_diversity'][i_ax][self.fold_id]['test'].path)
+            increase = pd.read_csv(self.input()['diversity_increase'][i_ax][self.fold_id].path).rename(
                 columns={'diversity': 'increase'})
+
+            # Filter them by keeping only the provided quantile
+            quantile = 0.00001
+            in_quantile_diversities = \
+                (np.quantile(diversities['diversity'], quantile) < diversities['diversity']) \
+                & (diversities['diversity'] < np.quantile(diversities['diversity'], 1 - quantile))
+            in_quantile_increase = \
+                (np.quantile(increase['increase'], quantile) < increase['increase']) \
+                & (increase['increase'] < np.quantile(increase['increase'], 1 - quantile))
+
+            diversities = diversities[in_quantile_diversities]
+            increase = increase[in_quantile_increase]
 
             # compute user volume
             user_item = pd.read_csv(
@@ -562,9 +568,6 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
             merged = increase.merge(diversities, on='user')
             merged = merged.merge(volume, on='user')
 
-            if self.bounds == None:
-                self.bounds = [None, None, None, None]
-
             # Plot the user points
             ax.scatter(
                 x=merged['diversity'],
@@ -577,13 +580,10 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
                 rasterized=True
             )
             ax.set_box_aspect(1/1.3333333)
-            ax.set_xlim(self.bounds[:2])
-            ax.set_ylim(self.bounds[2:])
 
             # Plot the linear regression
             a, b = linear_regression(merged, 'diversity', 'increase')
-            x = merged[(self.bounds[0] < merged['diversity']) & (merged['diversity'] < self.bounds[1])]['diversity'] \
-                .sort_values().to_numpy()
+            x = merged['diversity'].sort_values().to_numpy()
             y = a * x + b
             ax.plot(x, y, '--', c='purple')
 
@@ -600,17 +600,18 @@ class PlotUserDiversityIncreaseVsUserDiversity(luigi.Task):
                 )
 
             # Normalize the display of alpha
-            alpha = float(self.alpha_values[i//n_alphas])
+            alpha = float(self.alpha_values[i_ax//n_alphas])
             if alpha.is_integer():
                 alpha = f'{int(alpha)}'
             elif alpha == float('inf'):
                 alpha = f'+\infty'
 
             ax.set_title(
-                f'({chr(97 + i)}) '
-                f'$k = {self.n_recommendations_values[i%n_alphas]}$, '
+                f'({chr(97 + i_ax)}) '
+                f'$k = {self.n_recommendations_values[i_ax%n_alphas]}$, '
                 f'$\\alpha = {alpha}$'
             )
+            ax.get_legend().remove()
 
         # Create the colorbar
         norm = colors.LogNorm(vmin=min_volume, vmax=max_volume)
@@ -720,7 +721,7 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
             figsize=(.8*6.4, .8*(4.8 - 2)),
             dpi=600
         )
-        axes_flat: List[Axes] = axes.flatten()
+        axes_flat: List[Axes] = axes.flatten('F')
 
         # compute user volume
         user_item = pd.read_csv(
@@ -748,8 +749,12 @@ class PlotRecommendationDiversityVsUserDiversity(luigi.Task):
             low_bound = max(merged['diversity'].min(),
                             merged['reco_diversity'].min())
 
-            ax.plot([low_bound, up_bound], [
-                    low_bound, up_bound], '--', c='purple')
+            ax.plot(
+                [low_bound, up_bound],
+                [low_bound, up_bound],
+                '--',
+                c='purple'
+            )
 
             if self.bounds == None:
                 self.bounds = [None, None, None, None]
