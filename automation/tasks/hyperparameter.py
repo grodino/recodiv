@@ -77,9 +77,10 @@ class ComputeRecommendationDiversityVsHyperparameter(luigi.Task):
     def output(self):
         aggregated = self.dataset.base_folder.joinpath('aggregated')
 
-        hyperparam_values = [model[self.hyperparameter]
-                             for model in self.models]
-        regularization = self.models[0]['regularization']
+        n_factors_values = [model['n_factors']
+                            for model in self.models]
+        regularization_values = [model['regularization']
+                                 for model in self.models]
 
         # Convert array to tuple to avoid "[" and "]" in paths which could be
         # interpreted as wildcards
@@ -87,8 +88,8 @@ class ComputeRecommendationDiversityVsHyperparameter(luigi.Task):
             aggregated.joinpath(
                 f'{self.n_recommendations_values}recommendations'
                 f'_diversity{self.alpha}'
-                f'_vs_{tuple(hyperparam_values)}{self.hyperparameter}'
-                f'_{regularization}reg.csv'
+                f'_vs_{tuple(n_factors_values)}n_factors'
+                f'_{tuple(regularization_values)}reg.csv'
             ),
             format=luigi.format.Nop
         )
@@ -192,9 +193,10 @@ class PlotRecommendationDiversityVsHyperparameter(luigi.Task):
         figures = self.dataset.base_folder.joinpath(
             'aggregated').joinpath('figures')
 
-        hyperparam_values = [model[self.hyperparameter]
-                             for model in self.models]
-        regularization = self.models[0]['regularization']
+        n_factors_values = [model['n_factors']
+                            for model in self.models]
+        regularization_values = [model['regularization']
+                                 for model in self.models]
 
         return {
             # Convert array to tuple to avoid "[" and "]" in paths which could be
@@ -204,8 +206,8 @@ class PlotRecommendationDiversityVsHyperparameter(luigi.Task):
                     f'{self.n_recommendations_values}recommendations'
                     f'_ndcg{self.n_recommendations_ndcg}'
                     f'_diversity{self.alpha_values}'
-                    f'_vs_{tuple(hyperparam_values)}{self.hyperparameter}'
-                    f'_{regularization}reg.png'
+                    f'_vs_{tuple(n_factors_values)}n_factors'
+                    f'_{tuple(regularization_values)}reg.png'
                 ),
                 format=luigi.format.Nop
             ),
@@ -214,8 +216,8 @@ class PlotRecommendationDiversityVsHyperparameter(luigi.Task):
                     f'{self.n_recommendations_values}recommendations'
                     f'_ndcg{self.n_recommendations_ndcg}'
                     f'_diversity{self.alpha_values}'
-                    f'_vs_{tuple(hyperparam_values)}{self.hyperparameter}'
-                    f'_{regularization}reg.eps'
+                    f'_vs_{tuple(n_factors_values)}n_factors'
+                    f'_{tuple(regularization_values)}reg.eps'
                 ),
                 format=luigi.format.Nop
             ),
@@ -245,15 +247,16 @@ class PlotRecommendationDiversityVsHyperparameter(luigi.Task):
                 index_col=0
             )
 
-            data = data[1:].set_index(self.hyperparameter)
+            data = data.set_index(self.hyperparameter)
             data['ndcg'] = 0
 
-            for hyperparam in hyperparam_values[1:]:
+            for hyperparam in hyperparam_values:
                 metric = pd.read_json(
                     self.input()[hyperparam].path,
                     orient='index'
                 )
-                data.loc[hyperparam, 'ndcg'] = metric['ndcg'][0]
+                print(metric)
+                data.loc[hyperparam, 'ndcg'] = metric['ndcg'].mean()
 
             data = data.reset_index()
 
@@ -269,9 +272,9 @@ class PlotRecommendationDiversityVsHyperparameter(luigi.Task):
             # pl.ticklabel_format(axis='x', style='plain')
 
             for n_reco in self.n_recommendations_values:
-                data[f'{n_reco} recommendations'] = data[f'{n_reco} recommendations'].subtract(
-                    data[f'{n_reco} recommendations'].min()
-                )
+                # data[f'{n_reco} recommendations'] = data[f'{n_reco} recommendations'].subtract(
+                #     data[f'{n_reco} recommendations'].min()
+                # )
                 data[f'{n_reco} recommendations'] = data[f'{n_reco} recommendations'].divide(
                     data[f'{n_reco} recommendations'].max()
                 )
@@ -286,7 +289,7 @@ class PlotRecommendationDiversityVsHyperparameter(luigi.Task):
 
             ax.set_xticks(np.log10(data[self.hyperparameter]))
             ax.set_xticklabels([
-                str(round(10**tick, 2)) for tick in np.log10(data[self.hyperparameter])
+                str(round(10**tick, 4)) for tick in np.log10(data[self.hyperparameter])
             ])
 
             ndcg_ax = ax.twinx()
@@ -303,7 +306,7 @@ class PlotRecommendationDiversityVsHyperparameter(luigi.Task):
 
         # Re-add the tick labels for the last figure
         ndcg_ax.set_yticklabels([
-            round(tick, 2) for tick in ndcg_ax.get_yticks()
+            round(tick, 4) for tick in ndcg_ax.get_yticks()
         ])
 
         # Add the NDCG y label to the last figure

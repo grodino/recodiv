@@ -209,10 +209,10 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
     # return user_analysis()
     return (
         test_single_model()
-        + user_analysis()
+        # + user_analysis()
         + diversity_vs_parameters()
-        + test_hyperparameter_grid()
-        + data_info()
+        # + test_hyperparameter_grid()
+        # + data_info()
     )
 
 
