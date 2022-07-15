@@ -199,25 +199,23 @@ class PlotRecommendationDiversityVsHyperparameter(luigi.Task):
                                  for model in self.models]
 
         return {
-            # Convert array to tuple to avoid "[" and "]" in paths which could be
-            # interpreted as wildcards
             'png': luigi.LocalTarget(
                 figures.joinpath(
-                    f'{self.n_recommendations_values}recommendations'
+                    f'{"".join(map(str, self.n_recommendations_values))}recommendations'
                     f'_ndcg{self.n_recommendations_ndcg}'
-                    f'_diversity{self.alpha_values}'
-                    f'_vs_{tuple(n_factors_values)}n_factors'
-                    f'_{tuple(regularization_values)}reg.png'
+                    f'_diversity{"".join(map(str, self.alpha_values))}'
+                    f'_vs_{"".join(map(str, n_factors_values))}n_factors'
+                    f'_{"".join(map(str, regularization_values))}reg.png'
                 ),
                 format=luigi.format.Nop
             ),
             'eps': luigi.LocalTarget(
                 figures.joinpath(
-                    f'{self.n_recommendations_values}recommendations'
+                    f'{"".join(map(str, self.n_recommendations_values))}recommendations'
                     f'_ndcg{self.n_recommendations_ndcg}'
-                    f'_diversity{self.alpha_values}'
-                    f'_vs_{tuple(n_factors_values)}n_factors'
-                    f'_{tuple(regularization_values)}reg.eps'
+                    f'_diversity{"".join(map(str, self.alpha_values))}'
+                    f'_vs_{"".join(map(str, n_factors_values))}n_factors'
+                    f'_{"".join(map(str, regularization_values))}reg.eps'
                 ),
                 format=luigi.format.Nop
             ),
@@ -236,7 +234,7 @@ class PlotRecommendationDiversityVsHyperparameter(luigi.Task):
         fig, axes = pl.subplots(
             1, n_alphas,
             # constrained_layout=True,
-            figsize=((2 * 6.4), 4.8),
+            figsize=((1.5 * 6.4), 4.8),
             dpi=600
         )
         axes_flat: List[Axes] = axes.flatten()

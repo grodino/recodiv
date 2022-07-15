@@ -10,7 +10,7 @@ from automation.tasks.traintest import ComputeTrainTestUserDiversity, GenerateTr
 from automation.tasks.hyperparameter import PlotRecommendationDiversityVsHyperparameter
 from automation.tasks.model import EvaluateModel, EvaluateUserRecommendations, GeneratePredictions, GenerateRecommendations, PlotModelTuning, PlotTrainLoss, TrainModel
 from automation.tasks.recommendations import BuildRecommendationGraph, BuildRecommendationsWithListeningsGraph, ComputeRecommendationDiversities, ComputeRecommendationWithListeningsUsersDiversities, ComputeRecommendationWithListeningsUsersDiversityIncrease, PlotRecommendationDiversityVsUserDiversity, PlotRecommendationsUsersDiversitiesHistogram, PlotUserDiversityIncreaseVsUserDiversity
-from automation.tasks.user import AnalyseUser
+from automation.tasks.user import PlotUserTagHistograms, AnalyseUser, ComputeUserListenedRecommendedTagsDistribution, ComputeUserRecommendationsTagsDistribution, ComputeRecommendationWithListeningsUsersDiversityIncrease, ComputeTrainTestUserTagsDistribution
 from recodiv.utils import axes_to_grid
 
 
@@ -26,7 +26,7 @@ pl.rcParams.update({
     "legend.fontsize": 9,
     "mathtext.fontset": "dejavuserif",      # use serif font for math elements
     # "text.usetex": True,                    # use inline math for ticks
-    # "pgf.rcfonts": False,                   # don't setup fonts from rc parameters
+    "pgf.rcfonts": False,                   # don't setup fonts from rc parameters
     # "pgf.preamble": "\n".join([
     #     r"\usepackage{url}",                # load additional packages
     #     r"\usepackage{unicode-math}",       # unicode math setup
@@ -75,8 +75,10 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
     )
 
     users = [
-        '019d0d1c7a01f8736ba59a124160e5fc70666db7',  # 32, -21
-        '034824689950821a1b6c71186eea5235dc37639d',  # 18, 21
+        '57741fb06dc6557cf4748cc939ef27092174629b',  # 50, -20
+        '805e941cd75a5891c99e15fa1ba19b13d089c908',  # 49, 16
+        'fdeb46dea41366de2e745ecfacafadcbd9a93787',  # 12, -5
+        'dbc1378cd624fb9f9ab1c7424fd75283f99538b0',  # 12, 25
     ]
 
     def data_info():
@@ -98,6 +100,7 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
                 n_recommendations=10,
                 alpha_values=[0, 2, float('inf')],
                 fold_id=0,
+                users=users,
             ),
             PlotUserDiversityIncreaseVsUserDiversity(
                 dataset=msd_dataset,
@@ -194,7 +197,7 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
         return tasks
 
     def user_analysis():
-        return [
+        tasks = [
             AnalyseUser(
                 dataset=msd_dataset,
                 user_id=user_id,
@@ -206,13 +209,28 @@ def dev_tasks(n_users: int, name: str) -> List[luigi.Task]:
             ) for user_id in users
         ]
 
+        tasks += [
+            PlotUserTagHistograms(
+                dataset=msd_dataset,
+                alpha=2,
+                user_id=user_id,
+                model=model,
+                split=split,
+                n_recommendations=N_RECOMMENDATIONS,
+                fold_id=0,
+                n_tags=30
+            ) for user_id in users
+        ]
+
+        return tasks
+
     # return user_analysis()
     return (
         test_single_model()
-        # + user_analysis()
+        + user_analysis()
         + diversity_vs_parameters()
-        # + test_hyperparameter_grid()
-        # + data_info()
+        + test_hyperparameter_grid()
+        + data_info()
     )
 
 
